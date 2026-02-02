@@ -1,0 +1,202 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Utility classes for better mobile experience */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+/* Estilos para impresión en impresora térmica de 80mm */
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Ocultar todo excepto el contenido del ticket */
+  body * {
+    visibility: hidden;
+  }
+
+  #ticket-content,
+  #ticket-content * {
+    visibility: visible;
+  }
+
+  #ticket-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    padding: 1mm 1.5mm;
+    font-family: 'Consolas', 'Monaco', 'Lucida Console', 'Courier New', monospace;
+    font-size: 9pt;
+    line-height: 1.3;
+    box-sizing: border-box;
+    letter-spacing: 0.02em;
+    font-weight: 500;
+  }
+
+  /* Ajustar tamaños de fuente para impresión */
+  #ticket-content h1 {
+    font-size: 13pt;
+    font-weight: 700;
+    margin: 0 0 1mm 0;
+    letter-spacing: 0.03em;
+  }
+
+  #ticket-content h3 {
+    font-size: 10pt;
+    font-weight: 700;
+    margin: 1mm 0 0.5mm 0;
+    letter-spacing: 0.02em;
+  }
+
+  #ticket-content p,
+  #ticket-content div,
+  #ticket-content span {
+    font-size: 8pt;
+    line-height: 1.2;
+  }
+
+  /* Texto pequeño */
+  #ticket-content .text-xs {
+    font-size: 8pt;
+    font-weight: 500;
+  }
+
+  /* Texto mediano */
+  #ticket-content .text-sm {
+    font-size: 9pt;
+    font-weight: 500;
+  }
+
+  /* Texto base */
+  #ticket-content .text-base {
+    font-size: 10pt;
+    font-weight: 500;
+  }
+
+  /* Texto grande para totales */
+  #ticket-content .text-lg {
+    font-size: 12pt;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  #ticket-content .text-xl {
+    font-size: 14pt;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  #ticket-content .text-2xl {
+    font-size: 17pt;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
+  #ticket-content .text-3xl {
+    font-size: 19pt;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
+  /* Bordes y líneas */
+  #ticket-content hr {
+    border-top: 1px dashed #000;
+    margin: 2mm 0;
+  }
+
+  .border-dashed {
+    border-style: dashed !important;
+  }
+
+  /* Ajustar colores a blanco y negro */
+  #ticket-content * {
+    color: #000 !important;
+    background: #fff !important;
+    border-color: #000 !important;
+  }
+
+  /* Mantener algunos colores para énfasis */
+  #ticket-content .text-red-600,
+  #ticket-content .text-red-900,
+  #ticket-content .bg-red-100 {
+    color: #000 !important;
+    background: #fff !important;
+    font-weight: 700 !important;
+  }
+
+  #ticket-content .text-green-600,
+  #ticket-content .text-green-900,
+  #ticket-content .bg-green-100 {
+    color: #000 !important;
+    background: #fff !important;
+    font-weight: 700 !important;
+  }
+
+  /* Mejorar contraste para números importantes */
+  #ticket-content .font-bold,
+  #ticket-content strong {
+    font-weight: 700 !important;
+    letter-spacing: 0.02em;
+  }
+
+  /* Evitar saltos de página innecesarios */
+  #ticket-content div {
+    page-break-inside: avoid;
+  }
+
+  /* Optimizar espaciado */
+  #ticket-content .mb-4 {
+    margin-bottom: 1.5mm;
+  }
+
+  #ticket-content .mb-3 {
+    margin-bottom: 1mm;
+  }
+
+  #ticket-content .mb-2 {
+    margin-bottom: 0.5mm;
+  }
+
+  #ticket-content .mt-4 {
+    margin-top: 1.5mm;
+  }
+
+  #ticket-content .p-3,
+  #ticket-content .p-4 {
+    padding: 0.5mm 1mm;
+  }
+
+  #ticket-content .p-2 {
+    padding: 0.5mm;
+  }
+
+  /* Bordes redondeados no son necesarios en impresión */
+  #ticket-content .rounded-lg,
+  #ticket-content .rounded {
+    border-radius: 0 !important;
+    border: 1px solid #000 !important;
+  }
+}
