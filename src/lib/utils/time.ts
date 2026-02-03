@@ -3,7 +3,7 @@
  * Forzamos matemáticamente UTC-6 para evitar inconsistencias
  * entre navegador y servidor.
  */
-const MEXICO_TIMEZONE_OFFSET = -6; // horas
+// MEXICO_TIMEZONE_OFFSET = -6; // horas
 
 /**
  * Obtiene el offset actual en minutos.
@@ -25,12 +25,12 @@ export const convertUTCToMexico = (utcISOString: string): Date => {
  */
 export const getLocalDateStr = (date?: Date | string | null): string => {
   if (!date) return '';
-  
+
   const dateObj = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(dateObj.getTime())) return '';
 
   // Forzar UTC-6 restando milisegundos
-  const mexicoOffset = 6 * 60 * 60 * 1000; 
+  const mexicoOffset = 6 * 60 * 60 * 1000;
   const mexicoTime = new Date(dateObj.getTime() - mexicoOffset);
 
   return mexicoTime.toISOString().split('T')[0];
@@ -61,7 +61,7 @@ export const getLocalDateTime = (date?: Date | string | null): string => {
 export const getLocalTime = (date?: Date | string | null): string => {
   if (!date) return '';
   const dateObj = typeof date === 'string' ? new Date(date) : date;
-  
+
   return new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
     minute: '2-digit',
@@ -77,9 +77,11 @@ export const getLocalTime = (date?: Date | string | null): string => {
 export const getMexicoDateToUTC = (dateStr: string | null | undefined): string => {
   if (!dateStr) return '';
   try {
-    const date = new Date(dateStr);
+    // Si solo viene la fecha (YYYY-MM-DD), forzamos mediodía para evitar saltos de zona horaria
+    const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
+    const date = new Date(normalizedStr);
     if (isNaN(date.getTime())) return '';
-    
+
     // Forzamos las 6:00 AM UTC (que es 00:00 México)
     date.setUTCHours(6, 0, 0, 0);
     return date.toISOString();
@@ -103,7 +105,7 @@ export const getEndOfDayMexico = (date: Date = new Date()): string => {
   // Obtenemos inicio (06:00 Z)
   const startUTC = getStartOfDayMexico(date);
   const d = new Date(startUTC);
-  
+
   // Sumamos 23h 59m 59s
   d.setUTCHours(d.getUTCHours() + 23, 59, 59, 999);
   return d.toISOString();
@@ -115,23 +117,23 @@ export const getEndOfDayMexico = (date: Date = new Date()): string => {
  */
 export const getDateRangeMexico = (period: 'today' | 'week' | 'month' | 'year' = 'today'): [string, string] => {
   const now = new Date();
-  
-  // Ajuste matemático para saber "qué día es hoy" en México
+
+  // Obtener la fecha "YYYY-MM-DD" que es hoy en México (restando 6h al UTC actual)
   const mexicoOffset = 6 * 60 * 60 * 1000;
-  const mxNow = new Date(now.getTime() - mexicoOffset);
-  
-  let startDate = new Date(mxNow);
-  const endDateStr = mxNow.toISOString().split('T')[0];
+  const mxDate = new Date(now.getTime() - mexicoOffset);
+  const endDateStr = mxDate.toISOString().split('T')[0];
+
+  let startDate = new Date(mxDate.getTime());
 
   switch (period) {
     case 'week':
-      startDate.setDate(mxNow.getDate() - 7);
+      startDate.setDate(mxDate.getDate() - 6); // Últimos 7 días
       break;
     case 'month':
-      startDate.setMonth(mxNow.getMonth() - 1);
+      startDate.setMonth(mxDate.getMonth() - 1);
       break;
     case 'year':
-      startDate.setFullYear(mxNow.getFullYear() - 1);
+      startDate.setFullYear(mxDate.getFullYear() - 1);
       break;
     case 'today':
     default:
@@ -141,9 +143,9 @@ export const getDateRangeMexico = (period: 'today' | 'week' | 'month' | 'year' =
 
   const startDateStr = startDate.toISOString().split('T')[0];
 
-  // Convertimos usando la lógica arreglada
+  // Convertimos usando la lógica robusta de 6:00Z -> 00:00 MX
   const startUTC = getMexicoDateToUTC(startDateStr);
-  const endUTC = getEndOfDayMexico(new Date(endDateStr)); // Usamos el string corregido como base
+  const endUTC = getEndOfDayMexico(new Date(endDateStr + 'T12:00:00'));
 
   return [startUTC, endUTC];
 };
@@ -157,7 +159,9 @@ export const getMexicoHourRangeToUTC = (
   startHourMexico: number,
   endHourMexico: number
 ): [string, string] => {
-  const date = new Date(dateStr);
+  if (!dateStr) return ['', ''];
+  const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`;
+  const date = new Date(normalizedStr);
   if (isNaN(date.getTime())) return ['', ''];
 
   // Convertir hora México a UTC (sumar 6 horas)

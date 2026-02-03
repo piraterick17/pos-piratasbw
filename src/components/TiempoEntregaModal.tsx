@@ -65,21 +65,22 @@ export function TiempoEntregaModal({ isOpen, onClose, onConfirmar }: TiempoEntre
           </p>
 
           {/* Tiempos sugeridos */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="grid grid-cols-4 gap-2 mb-6">
             {tiemposSugeridos.map((tiempo) => (
               <button
                 key={tiempo}
+                type="button"
                 onClick={() => {
                   setMinutos(tiempo.toString());
                   setError('');
                 }}
-                className={`px-4 py-2 rounded-lg border-2 transition-all ${
-                  minutos === tiempo.toString()
-                    ? 'border-pirateRed bg-pirateRed bg-opacity-10 text-pirateRed font-semibold'
-                    : 'border-gray-300 hover:border-gray-400 text-gray-700'
-                }`}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all duration-200 ${minutos === tiempo.toString()
+                    ? 'border-pirateRed bg-pirateRed/5 text-pirateRed shadow-sm scale-105'
+                    : 'border-gray-100 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-white'
+                  }`}
               >
-                {tiempo} min
+                <span className="text-sm font-bold">{tiempo}</span>
+                <span className="text-[10px] uppercase font-medium">min</span>
               </button>
             ))}
           </div>

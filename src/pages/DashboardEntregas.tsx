@@ -1,24 +1,20 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Truck,
   TrendingUp,
-  TrendingDown,
   Clock,
-  CheckCircle,
   AlertTriangle,
-  Package,
   MapPin,
   BarChart3,
   User,
   DollarSign,
   Gift,
   Coffee,
-  Download,
   Loader2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
-import { formatCurrency } from '../lib/utils/formatters';
-import { getLocalDateStr } from '../lib/utils/time';
+import { formatCurrency } from '../lib/utils/format';
+import { getDateRangeMexico, getLocalDateStr } from '../lib/utils/time';
 import { DateRangeSelector } from '../components/DateRangeSelector';
 import {
   LineChart,
@@ -28,23 +24,12 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-  TooltipProps
+  ResponsiveContainer
 } from 'recharts';
 
-// Función helper para obtener el rango de "hoy"
+// El rango inicial ahora usa la utilidad centralizada de México
 function getInitialDateRange(): [string, string] {
-  const now = new Date();
-  const mexicoOffset = 6 * 60 * 60 * 1000;
-  const mexicoTime = new Date(now.getTime() - mexicoOffset);
-
-  const startOfDay = new Date(mexicoTime);
-  startOfDay.setHours(0, 0, 0, 0);
-
-  const endOfDay = new Date(mexicoTime);
-  endOfDay.setHours(23, 59, 59, 999);
-
-  return [startOfDay.toISOString(), endOfDay.toISOString()];
+  return getDateRangeMexico('today');
 }
 
 interface MetricasEntrega {
@@ -377,7 +362,9 @@ export function DashboardEntregas() {
         if (!p.zona_entrega_id || !p.zonas_entrega) return;
 
         const zonaId = p.zona_entrega_id;
-        const zonaNombre = p.zonas_entrega.nombre;
+        const zonaNombre = Array.isArray(p.zonas_entrega)
+          ? p.zonas_entrega[0]?.nombre
+          : (p.zonas_entrega as any)?.nombre || 'Zona desconocida';
 
         if (!zonasMap.has(zonaId)) {
           zonasMap.set(zonaId, {
@@ -491,12 +478,12 @@ export function DashboardEntregas() {
     return showAllZonas ? entregasPorZona : entregasPorZona.slice(0, 10);
   }, [entregasPorZona, showAllZonas]);
 
-  const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
           <p className="text-sm font-semibold text-gray-900 mb-2">{label}</p>
-          {payload.map((entry, index) => (
+          {payload.map((entry: any, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {entry.name}: {entry.value}
             </p>

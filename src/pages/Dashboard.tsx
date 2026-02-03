@@ -1,30 +1,25 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   ShoppingCart,
   Clock,
-  CheckCircle,
-  XCircle,
   DollarSign,
   TrendingUp,
   Package,
-  Users,
   Truck,
   AlertTriangle,
   ArrowRight,
-  Activity
+  CheckCircle,
 } from 'lucide-react';
 import { usePedidosStore } from '../lib/store/pedidosStore';
 import { useProductosStore } from '../lib/store/productosStore';
-import { formatCurrency, formatDateTimeUTC } from '../lib/utils/formatters';
-import { getLocalDateStr } from '../lib/utils/time';
-import { calculateVentasTotales } from '../lib/utils/ventasCalculations';
-import { filterPedidosByCategoria, ModoFiltroCategorias } from '../lib/utils/orderFilters';
+import { formatCurrency } from '../lib/utils/format';
+import { getDateRangeMexico } from '../lib/utils/time';
+import { useDashboardData } from '../hooks/useDashboardData';
+import { ModoFiltroCategorias } from '../lib/utils/orderFilters';
 import { WidgetCuentasPorPagar } from "../components/WidgetCuentasPorPagar";
 import {
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
@@ -54,109 +49,83 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass, bgClass }: an
 export function Dashboard() {
   const { pedidos, fetchPedidosConDetalles } = usePedidosStore();
   const { productos, fetchProductos } = useProductosStore();
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingStore, setIsLoadingStore] = useState(true);
   const [filtroCategoria, setFiltroCategoria] = useState<ModoFiltroCategorias>('todos');
 
-  // Carga inicial de datos consolidados
+  // Rango para el gráfico (últimos 7 días)
+  const [chartRange] = useState(() => {
+    const [start, end] = getDateRangeMexico('week');
+    return { start, end };
+  });
+
+  // Datos analíticos centralizados
+  const { data: analytics, loading: isLoadingAnalytics } = useDashboardData(
+    chartRange.start,
+    chartRange.end,
+    {
+      filterCategoria: filtroCategoria,
+      desayunosCategoryId: 54 // ID para categoría Desayunos
+    }
+  );
+
+  // Carga inicial de datos operativos
   useEffect(() => {
     const loadData = async () => {
-      setIsLoading(true);
+      setIsLoadingStore(true);
       await Promise.all([
         fetchPedidosConDetalles(),
         fetchProductos()
       ]);
-      setIsLoading(false);
+      setIsLoadingStore(false);
     };
     loadData();
   }, [fetchPedidosConDetalles, fetchProductos]);
 
   // --- LÓGICA DE NEGOCIO Y CÁLCULOS ---
 
-  // Helper para fechas locales (Misma lógica que Transacciones.tsx)
-  // Usar la función centralizada de TimeZone de México
-  const todayStr = getLocalDateStr(new Date());
-
   const stats = useMemo(() => {
     const activePedidos = pedidos.filter(p => !p.deleted_at);
 
-    // 1. Métricas de VENTAS DE HOY (Completado + En Reparto)
-    const ventasHoyBase = activePedidos.filter(p => {
-      if (!p.insert_date) return false;
-      return (
-        getLocalDateStr(p.insert_date) === todayStr &&
-        (p.estado_nombre === 'Completado' || p.estado_nombre === 'En Reparto')
-      );
-    });
+    // 1. Métricas de VENTAS DE HOY (Desde el Hook Analytics)
+    // Buscamos la entrada de hoy en el desglose por día del hook
+    const ventasHoy = analytics.ventasPorDia.find((v: { fecha: string; ventas: number }) => {
+      // Intentar machear con la fecha local de hoy
+      const actualTodayLocal = new Date().toLocaleDateString('es-MX', { month: 'short', day: 'numeric' });
+      return v.fecha === actualTodayLocal;
+    })?.ventas || 0;
 
-    const ventasHoy = filterPedidosByCategoria(ventasHoyBase, filtroCategoria, 54);
-    const totalVentasHoy = ventasHoy.reduce((sum, p) => sum + (p.total || 0), 0);
-
-    // 2. Métricas de LOGÍSTICA (Envíos)
+    // 2. Métricas de LOGÍSTICA (Operativo, usar Store)
     const pedidosEnReparto = activePedidos.filter(p => p.estado_nombre === 'En Reparto');
-    const pedidosDomicilioHoy = ventasHoy.filter(p => p.tipo_entrega_nombre === 'A domicilio');
 
     // 3. Métricas GENERALES
     const pendientes = activePedidos.filter(p => p.estado_nombre === 'Pendiente');
-    const completados = activePedidos.filter(p => p.estado_nombre === 'Completado');
 
-    // 4. Inventario Bajo (Productos activos con stock <= stock_minimo)
+    // 4. Inventario Bajo
     const productosBajoStock = productos.filter(p =>
-      p.activo && p.controlar_stock && (p.stock_actual <= p.stock_minimo)
+      p.activo && p.controlar_stock && ((p.stock_actual || 0) <= (p.stock_minimo || 0))
     );
 
     return {
-      ventasHoy: totalVentasHoy,
-      pedidosHoyCount: ventasHoy.length,
+      ventasHoy: ventasHoy,
+      pedidosHoyCount: analytics.totalPedidos,
       pendientesCount: pendientes.length,
       enRepartoCount: pedidosEnReparto.length,
-      domicilioHoyCount: pedidosDomicilioHoy.length,
-      completadosCount: completados.length,
+      domicilioHoyCount: analytics.pedidosDomicilio,
       bajoStockCount: productosBajoStock.length,
       productosBajoStockList: productosBajoStock.slice(0, 5)
     };
-  }, [pedidos, productos, todayStr, filtroCategoria]);
+  }, [pedidos, productos, analytics]);
 
-  // Gráfico: Ventas Últimos 7 Días (Completado + En Reparto)
-  const chartDataVentas = useMemo(() => {
-    const datos = [];
-    const hoy = new Date();
-
-    for (let i = 6; i >= 0; i--) {
-      const fecha = new Date(hoy);
-      fecha.setDate(fecha.getDate() - i);
-      const fechaStr = fecha.toLocaleDateString('en-CA');
-
-      const ventasDiaBase = pedidos.filter(p =>
-        !p.deleted_at &&
-        (p.estado_nombre === 'Completado' || p.estado_nombre === 'En Reparto') &&
-        getLocalDateStr(p.insert_date) === fechaStr
-      );
-
-      const ventasDia = filterPedidosByCategoria(ventasDiaBase, filtroCategoria, 54);
-      const totalDia = ventasDia.reduce((sum, p) => sum + (p.total || 0), 0);
-
-      datos.push({
-        name: fecha.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric' }),
-        ventas: totalDia,
-        pedidos: ventasDia.length
-      });
-    }
-    return datos;
-  }, [pedidos, filtroCategoria]);
-
-  // Gráfico: Distribución por Categoría (Completado + En Reparto)
-  const chartDataCategorias = useMemo(() => {
-    const pedidosFiltrados = filterPedidosByCategoria(pedidos, filtroCategoria, 54);
-    const resultado = calculateVentasTotales(pedidosFiltrados, {
-      estados: ['Completado', 'En Reparto']
-    });
-
-    return resultado.desglosePorCategoria.slice(0, 6);
-  }, [pedidos, filtroCategoria]);
+  // El gráfico ahora usa directamente los datos del hook
+  const chartDataVentas = analytics.ventasPorDia;
+  const chartDataCategorias = analytics.topProductos.slice(0, 6).map(p => ({
+    nombre: p.nombre,
+    total: p.total
+  }));
 
   const COLORES_CHART = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-  if (isLoading) {
+  if (isLoadingStore || isLoadingAnalytics) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-3">
@@ -170,7 +139,7 @@ export function Dashboard() {
   return (
     <div className="h-full overflow-y-auto bg-gray-50">
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        
+
         {/* --- HEADER --- */}
         <div className="space-y-3">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -190,31 +159,28 @@ export function Dashboard() {
           <div className="flex gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full sm:w-auto">
             <button
               onClick={() => setFiltroCategoria('todos')}
-              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${
-                filtroCategoria === 'todos'
-                  ? 'bg-white text-indigo-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'todos'
+                ? 'bg-white text-indigo-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
               Todos los Pedidos
             </button>
             <button
               onClick={() => setFiltroCategoria('solo_desayunos')}
-              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${
-                filtroCategoria === 'solo_desayunos'
-                  ? 'bg-white text-indigo-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'solo_desayunos'
+                ? 'bg-white text-indigo-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
               Solo Desayunos
             </button>
             <button
               onClick={() => setFiltroCategoria('excluir_desayunos')}
-              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${
-                filtroCategoria === 'excluir_desayunos'
-                  ? 'bg-white text-indigo-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'excluir_desayunos'
+                ? 'bg-white text-indigo-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
               Sin Desayunos (Turno Regular)
             </button>
@@ -224,49 +190,49 @@ export function Dashboard() {
         {/* --- GRID DE KPIs PRINCIPALES --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Ventas Hoy */}
-          <StatCard 
-            title="Ventas de Hoy" 
-            value={formatCurrency(stats.ventasHoy)} 
+          <StatCard
+            title="Ventas de Hoy"
+            value={formatCurrency(stats.ventasHoy)}
             subtext={`${stats.pedidosHoyCount} pedidos registrados`}
-            icon={DollarSign} 
-            colorClass="text-green-600" 
+            icon={DollarSign}
+            colorClass="text-green-600"
             bgClass="bg-green-50"
           />
-          
+
           {/* Pedidos Pendientes */}
-          <StatCard 
-            title="Por Atender" 
-            value={stats.pendientesCount} 
+          <StatCard
+            title="Por Atender"
+            value={stats.pendientesCount}
             subtext="Pedidos en cola"
-            icon={Clock} 
-            colorClass="text-orange-600" 
+            icon={Clock}
+            colorClass="text-orange-600"
             bgClass="bg-orange-50"
           />
 
           {/* Envíos Activos */}
-          <StatCard 
-            title="En Ruta" 
-            value={stats.enRepartoCount} 
+          <StatCard
+            title="En Ruta"
+            value={stats.enRepartoCount}
             subtext={`De ${stats.domicilioHoyCount} a domicilio hoy`}
-            icon={Truck} 
-            colorClass="text-blue-600" 
+            icon={Truck}
+            colorClass="text-blue-600"
             bgClass="bg-blue-50"
           />
 
           {/* Alertas Inventario */}
-          <StatCard 
-            title="Stock Crítico" 
-            value={stats.bajoStockCount} 
+          <StatCard
+            title="Stock Crítico"
+            value={stats.bajoStockCount}
             subtext="Productos requieren atención"
-            icon={AlertTriangle} 
-            colorClass="text-red-600" 
+            icon={AlertTriangle}
+            colorClass="text-red-600"
             bgClass="bg-red-50"
           />
         </div>
 
         {/* --- SECCIÓN PRINCIPAL: GRÁFICO Y ALERTAS --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+
           {/* Gráfico de Tendencia (Ocupa 2 columnas) */}
           <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-6">
@@ -282,35 +248,35 @@ export function Dashboard() {
                 <AreaChart data={chartDataVentas}>
                   <defs>
                     <linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis 
-                    dataKey="name" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{fill: '#9ca3af', fontSize: 12}} 
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9ca3af', fontSize: 12 }}
                     dy={10}
                   />
-                  <YAxis 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{fill: '#9ca3af', fontSize: 12}} 
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9ca3af', fontSize: 12 }}
                     tickFormatter={(val) => `$${val}`}
                   />
-                  <Tooltip 
-                    contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
+                  <Tooltip
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     formatter={(val: number) => [formatCurrency(val), 'Venta Total']}
                   />
-                  <Area 
-                    type="monotone" 
-                    dataKey="ventas" 
-                    stroke="#6366f1" 
+                  <Area
+                    type="monotone"
+                    dataKey="ventas"
+                    stroke="#6366f1"
                     strokeWidth={3}
-                    fillOpacity={1} 
-                    fill="url(#colorVentas)" 
+                    fillOpacity={1}
+                    fill="url(#colorVentas)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -319,13 +285,13 @@ export function Dashboard() {
 
           {/* Tarjeta Lateral: Alertas y Resumen */}
           <div className="space-y-6">
-            
+
             {/* Lista de Stock Bajo */}
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 h-full">
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-red-500" /> Alertas de Inventario
               </h3>
-              
+
               {stats.productosBajoStockList.length > 0 ? (
                 <div className="space-y-3">
                   {stats.productosBajoStockList.map((prod) => (
@@ -359,31 +325,31 @@ export function Dashboard() {
 
         {/* --- SECCIÓN INFERIOR: CATEGORÍAS Y FINANZAS --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+
           {/* Gráfico Pastel: Categorías */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <Package className="w-5 h-5 text-purple-600" /> Top Categorías
             </h3>
             <div className="h-[250px] relative">
-               <ResponsiveContainer width="100%" height="100%">
-                 <PieChart>
-                   <Pie
-                     data={chartDataCategorias}
-                     innerRadius={60}
-                     outerRadius={80}
-                     paddingAngle={5}
-                     dataKey="total"
-                     nameKey="nombre"
-                   >
-                     {chartDataCategorias.map((entry, index) => (
-                       <Cell key={`cell-${index}`} fill={COLORES_CHART[index % COLORES_CHART.length]} />
-                     ))}
-                   </Pie>
-                   <Tooltip formatter={(val: number) => formatCurrency(val)} />
-                   <Legend layout="vertical" verticalAlign="middle" align="right" />
-                 </PieChart>
-               </ResponsiveContainer>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartDataCategorias}
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="total"
+                    nameKey="nombre"
+                  >
+                    {chartDataCategorias.map((_, index: number) => (
+                      <Cell key={`cell-${index}`} fill={COLORES_CHART[index % COLORES_CHART.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(val: number) => formatCurrency(val)} />
+                  <Legend layout="vertical" verticalAlign="middle" align="right" />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
 

@@ -1,23 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   BarChart,
   Calendar,
-  Filter,
   TrendingUp,
   Package,
   Users,
-  DollarSign,
   FileText,
   Download,
   Search,
-  Coffee
 } from 'lucide-react';
-import { usePedidosStore } from '../lib/store/pedidosStore';
-import { useProductosStore } from '../lib/store/productosStore';
-import { formatCurrency, formatDate } from '../lib/utils/formatters';
-// [CHANGE] Importamos las utilidades corregidas
-import { getLocalDateStr, getMexicoDateToUTC, getLocalDateTime } from '../lib/utils/time';
-import { calculateVentasTotales, calculateProductosVendidos } from '../lib/utils/ventasCalculations';
+import { formatCurrency, formatDateTimeMX } from '../lib/utils/format';
+import { getDateRangeMexico } from '../lib/utils/time';
+import { useDashboardData } from '../hooks/useDashboardData';
 import {
   LineChart,
   Line,
@@ -25,34 +19,26 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer
 } from 'recharts';
 
 type TipoReporte = 'ventas' | 'productos' | 'clientes' | null;
 
 export function Reportes() {
-  const { fetchPedidosByDateRange, isLoading } = usePedidosStore();
-  const { fetchProductosConStock } = useProductosStore();
-  
   const [tipoReporte, setTipoReporte] = useState<TipoReporte>(null);
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
-  const [datosReporte, setDatosReporte] = useState<any[]>([]);
-  const [pedidosRaw, setPedidosRaw] = useState<any[]>([]);
-  const [generandoReporte, setGenerandoReporte] = useState(false);
-  const [productosStockBajo, setProductosStockBajo] = useState<any[]>([]);
 
-  // Establecer fechas por defecto
-  useEffect(() => {
-    // Usamos new Date() normal, getLocalDateStr se encarga del offset
-    const hoy = new Date();
-    const hace30Dias = new Date();
-    hace30Dias.setDate(hoy.getDate() - 30);
+  // Rango de fechas centralizado
+  const [dateRange, setDateRange] = useState(() => {
+    const [start, end] = getDateRangeMexico('month'); // Mes por defecto para reportes
+    return { start, end };
+  });
 
-    setFechaFin(getLocalDateStr(hoy));
-    setFechaInicio(getLocalDateStr(hace30Dias));
-  }, []);
+  // El hook se encarga de todo el procesamiento pesado
+  const { data: analytics, loading: generandoReporte } = useDashboardData(
+    dateRange.start,
+    dateRange.end,
+    { includeCancelled: false }
+  );
 
   const tiposReporte = [
     {
@@ -60,7 +46,6 @@ export function Reportes() {
       titulo: 'Ventas',
       descripcion: 'Análisis de ventas por período',
       icono: TrendingUp,
-      color: 'bg-blue-600 hover:bg-blue-700',
       colorIcon: 'bg-blue-100 text-blue-600'
     },
     {
@@ -68,7 +53,6 @@ export function Reportes() {
       titulo: 'Productos',
       descripcion: 'Rendimiento de productos',
       icono: Package,
-      color: 'bg-green-600 hover:bg-green-700',
       colorIcon: 'bg-green-100 text-green-600'
     },
     {
@@ -76,473 +60,229 @@ export function Reportes() {
       titulo: 'Clientes',
       descripcion: 'Análisis de clientes',
       icono: Users,
-      color: 'bg-purple-600 hover:bg-purple-700',
       colorIcon: 'bg-purple-100 text-purple-600'
     }
   ];
 
-  const generarReporte = async () => {
-    if (!tipoReporte || !fechaInicio || !fechaFin) {
-      return;
-    }
-
-    setGenerandoReporte(true);
-    try {
-      // 1. Inicio: 00:00 MX -> UTC
-      const inicioUTC = getMexicoDateToUTC(fechaInicio);
-      
-      // 2. Fin: Necesitamos cubrir hasta las 23:59:59 del día fin en MX.
-      // getMexicoDateToUTC devuelve el INICIO (06:00 UTC).
-      // Sumamos 23h 59m 59s para cubrir el día completo.
-      const finDateObj = new Date(getMexicoDateToUTC(fechaFin));
-      finDateObj.setUTCHours(finDateObj.getUTCHours() + 23, 59, 59, 999);
-      const finUTC = finDateObj.toISOString();
-
-      console.log(`[Reportes] Query Range (UTC): ${inicioUTC} - ${finUTC}`);
-
-      const pedidos = await fetchPedidosByDateRange(inicioUTC, finUTC);
-      setPedidosRaw(pedidos);
-
-      switch (tipoReporte) {
-        case 'ventas':
-          setDatosReporte(generarReporteVentas(pedidos));
-          break;
-        case 'productos':
-          setDatosReporte(generarReporteProductos(pedidos));
-          const productosConStock = await fetchProductosConStock();
-          const stockBajo = productosConStock.filter(p =>
-            p.controlar_stock && (p.stock_actual || 0) <= (p.stock_minimo || 0)
-          );
-          setProductosStockBajo(stockBajo);
-          break;
-        case 'clientes':
-          setDatosReporte(generarReporteClientes(pedidos));
-          break;
-      }
-    } catch (error) {
-      console.error('Error generando reporte:', error);
-    } finally {
-      setGenerandoReporte(false);
-    }
-  };
-
-  const generarReporteVentas = (pedidos: any[]) => {
-    const resultado = calculateVentasTotales(pedidos, {
-      estados: ['Completado', 'En Reparto']
-    });
-
-    return resultado.desglosePorDia.map(dia => ({
-      ...dia,
-      // Al mostrar la fecha en la gráfica, nos aseguramos que se vea bien
-      // Como 'dia.fecha' ya viene corregido por calculateVentasTotales (gracias a time.ts nuevo)
-      // solo necesitamos formatearlo para lectura humana.
-      fecha: formatDateLabel(dia.fecha)
-    }));
-  };
-  
-  // Helper para formatear "2026-01-05" a "05 Ene" de forma segura
-  const formatDateLabel = (dateStr: string) => {
-      const parts = dateStr.split('-'); // [2026, 01, 05]
-      if (parts.length !== 3) return dateStr;
-      const day = parts[2];
-      const monthIndex = parseInt(parts[1]) - 1;
-      const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-      return `${day} ${months[monthIndex]}`;
-  };
-
-  const generarReporteProductos = (pedidos: any[]) => {
-    return calculateProductosVendidos(pedidos, {
-      estados: ['Completado', 'En Reparto']
-    });
-  };
-
-  const generarReporteClientes = (pedidos: any[]) => {
-    const pedidosFiltrados = pedidos.filter(p =>
-      (p.estado_nombre === 'Completado' || p.estado_nombre === 'En Reparto') && !p.deleted_at
-    );
-    const clientesData: { [key: string]: any } = {};
-
-    pedidosFiltrados.forEach(pedido => {
-      const clienteId = pedido.cliente_id || 'sin-cliente';
-      const clienteNombre = pedido.cliente_nombre || 'Público General';
-
-      if (!clientesData[clienteId]) {
-        clientesData[clienteId] = {
-          nombre: clienteNombre,
-          pedidos: 0,
-          total: 0,
-          ultimaCompra: null
-        };
-      }
-
-      clientesData[clienteId].pedidos += 1;
-      clientesData[clienteId].total += pedido.total || 0;
-
-      const fechaPedido = new Date(pedido.insert_date);
-      if (!clientesData[clienteId].ultimaCompra || fechaPedido > new Date(clientesData[clienteId].ultimaCompra)) {
-        clientesData[clienteId].ultimaCompra = pedido.insert_date;
-      }
-    });
-
-    return Object.values(clientesData)
-      .sort((a: any, b: any) => b.total - a.total);
-  };
-
   const exportarReporte = () => {
-    if (!datosReporte.length) return;
-    
-    const csvContent = convertirACSV(datosReporte, tipoReporte);
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `reporte-${tipoReporte}-${fechaInicio}-${fechaFin}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
+    if (!analytics.rawData.length) return;
 
-  const convertirACSV = (datos: any[], tipo: TipoReporte) => {
-    if (!datos.length) return '';
-    
-    let headers: string[] = [];
-    let rows: string[][] = [];
-    
-    switch (tipo) {
+    const headers: string[] = [];
+    const rows: string[][] = [];
+
+    switch (tipoReporte) {
       case 'ventas':
-        headers = ['Fecha', 'Ventas', 'Pedidos'];
-        rows = datos.map(d => [d.fecha, d.ventas.toString(), d.pedidos.toString()]);
+        headers.push('Fecha', 'Ventas', 'Pedidos');
+        analytics.ventasPorDia.forEach(d => rows.push([d.fecha, d.ventas.toString(), d.pedidos.toString()]));
         break;
       case 'productos':
-        headers = ['Producto', 'Categoría', 'Cantidad Vendida', 'Total Ventas', 'Pedidos'];
-        rows = datos.map(d => [d.nombre, d.categoria, d.cantidad.toString(), d.total.toString(), d.pedidos.toString()]);
+        headers.push('Producto', 'Categoría', 'Cantidad', 'Total');
+        analytics.topProductos.forEach(p => rows.push([p.nombre, p.categoria || '', p.cantidad.toString(), p.total.toString()]));
         break;
       case 'clientes':
-        headers = ['Cliente', 'Pedidos', 'Total Gastado', 'Última Compra'];
-        rows = datos.map(d => [d.nombre, d.pedidos.toString(), d.total.toString(), d.ultimaCompra || '']);
+        headers.push('Cliente', 'Pedidos', 'Total', 'Última Compra');
+        analytics.topClientes.forEach(c => rows.push([c.nombre, c.pedidos.toString(), c.total.toString(), c.ultimaCompra || '']));
         break;
     }
-    
-    const csvRows = [headers.join(','), ...rows.map(row => row.join(','))];
-    return csvRows.join('\n');
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `reporte-${tipoReporte}-${new Date().toLocaleDateString()}.csv`);
+    link.click();
   };
 
   return (
-    <div className="h-full flex flex-col overflow-y-auto">
-      <div className="p-4 sm:p-6 lg:p-8">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-          <BarChart className="w-8 h-8 mr-3 text-blue-600" />
-          Reportes
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Genera reportes detallados de ventas, productos y clientes.
-        </p>
-      </div>
+    <div className="h-full flex flex-col overflow-y-auto bg-gray-50">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+            <BarChart className="w-8 h-8 mr-3 text-indigo-600" />
+            Reportes Avanzados
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Visualización y exportación de datos financieros con precisión de zona horaria.
+          </p>
+        </div>
 
-      {/* Filtros de Fecha */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Calendar className="w-5 h-5 mr-2" />
-          Rango de Fechas
-        </h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Fecha de Inicio
-            </label>
-            <input
-              type="date"
-              value={fechaInicio}
-              onChange={(e) => setFechaInicio(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Fecha de Fin
-            </label>
-            <input
-              type="date"
-              value={fechaFin}
-              onChange={(e) => setFechaFin(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div className="flex items-end">
-            <button
-              onClick={generarReporte}
-              disabled={!tipoReporte || !fechaInicio || !fechaFin || generandoReporte}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-            >
-              {generandoReporte ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Generando...
-                </>
-              ) : (
-                <>
-                  <Search className="w-4 h-4 mr-2" />
-                  Generar Reporte
-                </>
-              )}
-            </button>
+        {/* Filtros de Fecha */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center uppercase tracking-wider">
+            <Calendar className="w-4 h-4 mr-2" />
+            Rango del Reporte
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">FECHA INICIO</label>
+              <input
+                type="date"
+                value={dateRange.start.split('T')[0]}
+                onChange={(e) => setDateRange(prev => ({ ...prev, start: `${e.target.value}T00:00:00.000Z` }))}
+                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">FECHA FIN</label>
+              <input
+                type="date"
+                value={dateRange.end.split('T')[0]}
+                onChange={(e) => setDateRange(prev => ({ ...prev, end: `${e.target.value}T23:59:59.999Z` }))}
+                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Tipos de Reporte */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Filter className="w-5 h-5 mr-2" />
-          Tipos de Reporte
-        </h2>
-        
+        {/* Tipos de Reporte */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {tiposReporte.map((tipo) => {
             const IconComponent = tipo.icono;
             const isSelected = tipoReporte === tipo.id;
-            
+
             return (
               <button
                 key={tipo.id}
                 onClick={() => setTipoReporte(tipo.id)}
-                className={`p-6 rounded-lg border-2 transition-all ${
-                  isSelected
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                }`}
+                className={`p-5 rounded-xl border-2 transition-all flex flex-col items-center gap-3 text-center ${isSelected
+                    ? 'border-indigo-600 bg-white shadow-md'
+                    : 'border-transparent bg-white hover:border-gray-200 opacity-70 grayscale-[0.5]'
+                  }`}
               >
-                <div className="flex items-center mb-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${tipo.colorIcon}`}>
-                    <IconComponent className="w-5 h-5" />
-                  </div>
-                  <div className="ml-3 text-left">
-                    <h3 className="font-semibold text-gray-900">{tipo.titulo}</h3>
-                  </div>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${tipo.colorIcon}`}>
+                  <IconComponent className="w-6 h-6" />
                 </div>
-                <p className="text-sm text-gray-600 text-left">{tipo.descripcion}</p>
+                <div>
+                  <h3 className="font-bold text-gray-900">{tipo.titulo}</h3>
+                  <p className="text-xs text-gray-500 mt-1">{tipo.descripcion}</p>
+                </div>
               </button>
             );
           })}
         </div>
-      </div>
 
-      {/* Área de Resultados */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-            <FileText className="w-5 h-5 mr-2" />
-            Resultados del Reporte
-          </h2>
-          
-          {datosReporte.length > 0 && (
-            <button
-              onClick={exportarReporte}
-              className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Exportar CSV
-            </button>
+        {/* Área de Resultados */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center">
+              <FileText className="w-5 h-5 mr-2 text-indigo-600" />
+              {tipoReporte ? `Análisis de ${tipoReporte.charAt(0).toUpperCase() + tipoReporte.slice(1)}` : 'Seleccione un Reporte'}
+            </h2>
+
+            {tipoReporte && analytics.rawData.length > 0 && (
+              <button
+                onClick={exportarReporte}
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-medium text-sm shadow-sm"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Exportar CSV
+              </button>
+            )}
+          </div>
+
+          {!tipoReporte ? (
+            <div className="text-center py-20 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <BarChart className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Elija un módulo de análisis</h3>
+              <p className="text-gray-500 max-w-xs mx-auto mt-2">
+                Haga clic en Ventas, Productos o Clientes arriba para visualizar los datos.
+              </p>
+            </div>
+          ) : generandoReporte ? (
+            <div className="text-center py-20 flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+              <p className="text-gray-500 font-medium font-mono animate-pulse">PROCESANDO DATOS EN TIEMPO REAL...</p>
+            </div>
+          ) : analytics.rawData.length === 0 ? (
+            <div className="text-center py-20">
+              <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-gray-900">Sin datos para este rango</h3>
+              <p className="text-gray-500">Intente seleccionando otro período de fechas.</p>
+            </div>
+          ) : (
+            <ReporteResultados type={tipoReporte} data={analytics} />
           )}
         </div>
-
-        {!tipoReporte || !fechaInicio || !fechaFin ? (
-          <div className="text-center py-12">
-            <BarChart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Selecciona un tipo de reporte y un rango de fechas para comenzar
-            </h3>
-            <p className="text-gray-500">
-              Elige el tipo de análisis que deseas realizar y define el período de tiempo.
-            </p>
-          </div>
-        ) : datosReporte.length === 0 && !generandoReporte ? (
-          <div className="text-center py-12">
-            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No hay datos para el período seleccionado
-            </h3>
-            <p className="text-gray-500">
-              Intenta con un rango de fechas diferente o verifica que haya pedidos en este período.
-            </p>
-          </div>
-        ) : (
-          <ReporteResultados tipo={tipoReporte} datos={datosReporte} pedidosRaw={pedidosRaw} />
-        )}
-      </div>
       </div>
     </div>
   );
 }
 
-// Componente para mostrar los resultados según el tipo de reporte
-function ReporteResultados({ tipo, datos, pedidosRaw }: { tipo: TipoReporte; datos: any[]; pedidosRaw: any[] }) {
-  if (!datos.length) return null;
-
-  switch (tipo) {
+function ReporteResultados({ type, data }: { type: TipoReporte; data: any }) {
+  switch (type) {
     case 'ventas':
-      return <ReporteVentas datos={datos} pedidosRaw={pedidosRaw} />;
+      return <ReporteVentas analytics={data} />;
     case 'productos':
-      return <ReporteProductos datos={datos} />;
+      return <ReporteProductos analytics={data} />;
     case 'clientes':
-      return <ReporteClientes datos={datos} />;
+      return <ReporteClientes analytics={data} />;
     default:
       return null;
   }
 }
 
-function ReporteVentas({ datos, pedidosRaw }: { datos: any[]; pedidosRaw: any[] }) {
-  const totalVentas = datos.reduce((sum, d) => sum + d.ventas, 0);
-  const totalPedidos = datos.reduce((sum, d) => sum + d.pedidos, 0);
-  const ticketPromedio = totalPedidos > 0 ? totalVentas / totalPedidos : 0;
-
-  const ventaDesayunos = pedidosRaw
-    .filter(p => (p.estado_nombre === 'Completado' || p.estado_nombre === 'En Reparto') && !p.deleted_at)
-    .reduce((total, pedido) => {
-      const desayunosTotal = (pedido.detalles || []).reduce((sum: number, detalle: any) => {
-        const categoriaId = detalle?.producto?.categoria_id;
-        const categoriaNombre = detalle?.producto?.categoria?.nombre;
-        const isDesayunos = categoriaNombre === 'Desayunos' || categoriaId === 54;
-        return sum + (isDesayunos ? (Number(detalle?.subtotal) || 0) : 0);
-      }, 0);
-      return total + desayunosTotal;
-    }, 0);
-
-  const porcentajeDesayunos = totalVentas > 0 ? (ventaDesayunos / totalVentas) * 100 : 0;
-
+function ReporteVentas({ analytics }: { analytics: any }) {
   return (
-    <div>
-      {/* Resumen */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <div className="flex items-center">
-            <DollarSign className="w-8 h-8 text-blue-600 mr-3" />
-            <div>
-              <p className="text-sm text-blue-600">Total Ventas</p>
-              <p className="text-xl font-bold text-blue-900">{formatCurrency(totalVentas)}</p>
-            </div>
-          </div>
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100">
+          <p className="text-xs font-bold text-indigo-400 uppercase">Facturación Total</p>
+          <h3 className="text-3xl font-black text-indigo-900 mt-2">{formatCurrency(analytics.totalVentas)}</h3>
+          <p className="text-sm text-indigo-600 mt-1">En {analytics.totalPedidos} pedidos completados</p>
         </div>
-
-        <div className="bg-green-50 p-4 rounded-lg">
-          <div className="flex items-center">
-            <Package className="w-8 h-8 text-green-600 mr-3" />
-            <div>
-              <p className="text-sm text-green-600">Total Pedidos</p>
-              <p className="text-xl font-bold text-green-900">{totalPedidos}</p>
-            </div>
-          </div>
+        <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100">
+          <p className="text-xs font-bold text-emerald-400 uppercase">Ticket Promedio</p>
+          <h3 className="text-3xl font-black text-emerald-900 mt-2">{formatCurrency(analytics.ticketPromedio)}</h3>
+          <p className="text-sm text-emerald-600 mt-1">Eficiencia de venta por cliente</p>
         </div>
-
-        <div className="bg-purple-50 p-4 rounded-lg">
-          <div className="flex items-center">
-            <TrendingUp className="w-8 h-8 text-purple-600 mr-3" />
-            <div>
-              <p className="text-sm text-purple-600">Ticket Promedio</p>
-              <p className="text-xl font-bold text-purple-900">{formatCurrency(ticketPromedio)}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-orange-50 p-4 rounded-lg">
-          <div className="flex items-center">
-            <Coffee className="w-8 h-8 text-orange-600 mr-3" />
-            <div>
-              <p className="text-sm text-orange-600">Venta Desayunos</p>
-              <p className="text-xl font-bold text-orange-900">{formatCurrency(ventaDesayunos)}</p>
-              <p className="text-xs text-orange-600 mt-1">{porcentajeDesayunos.toFixed(1)}% del total</p>
-            </div>
-          </div>
+        <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100">
+          <p className="text-xs font-bold text-amber-400 uppercase">Envíos a Domicilio</p>
+          <h3 className="text-3xl font-black text-amber-900 mt-2">{analytics.pedidosDomicilio}</h3>
+          <p className="text-sm text-amber-600 mt-1">{analytics.totalPedidos > 0 ? ((analytics.pedidosDomicilio / analytics.totalPedidos) * 100).toFixed(0) : 0}% de la operación total</p>
         </div>
       </div>
 
-      {/* Gráfico de Tendencia de Ventas */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-8">
-        <div className="flex items-center mb-6">
-          <TrendingUp className="w-5 h-5 text-blue-600 mr-2" />
-          <h3 className="text-lg font-semibold text-gray-900">Tendencia de Ventas</h3>
-        </div>
-        <ResponsiveContainer width="100%" height={400}>
-          <LineChart data={datos}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis 
-              dataKey="fecha" 
-              tick={{ fontSize: 12 }}
-              angle={-45}
-              textAnchor="end"
-              height={80}
+      <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+        <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-indigo-600" />
+          Tendencia Diaria de Ingresos
+        </h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={analytics.ventasPorDia}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+            <XAxis dataKey="fecha" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => `$${v}`} />
+            <Tooltip
+              contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+              formatter={(v) => [formatCurrency(v as number), 'Ventas']}
             />
-            <YAxis 
-              tickFormatter={(value) => formatCurrency(value)}
-              tick={{ fontSize: 12 }}
-            />
-            <Tooltip 
-              formatter={(value: number) => [formatCurrency(value), 'Ventas']}
-              labelFormatter={(label) => `Fecha: ${label}`}
-              contentStyle={{
-                backgroundColor: '#fff',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-              }}
-            />
-            <Legend />
-            <Line 
-              type="monotone" 
-              dataKey="ventas" 
-              stroke="#3B82F6" 
-              strokeWidth={3}
-              dot={{ fill: '#3B82F6', strokeWidth: 2, r: 5 }}
-              activeDot={{ r: 7, stroke: '#3B82F6', strokeWidth: 2, fill: '#fff' }}
-              name="Ventas"
-            />
+            <Line type="monotone" dataKey="ventas" stroke="#6366f1" strokeWidth={4} dot={{ r: 4, fill: '#6366f1' }} activeDot={{ r: 6 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Tabla de datos */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-gray-50">
+      <div className="overflow-hidden border border-gray-100 rounded-xl">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Fecha
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Ventas
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Pedidos
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Ticket Promedio
-              </th>
+              <th className="px-6 py-4 text-left font-bold text-gray-900 uppercase tracking-tighter">Fecha</th>
+              <th className="px-6 py-4 text-right font-bold text-gray-900 uppercase tracking-tighter">Ventas</th>
+              <th className="px-6 py-4 text-right font-bold text-gray-900 uppercase tracking-tighter">Pedidos</th>
+              <th className="px-6 py-4 text-right font-bold text-gray-900 uppercase tracking-tighter">T. Promedio</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {datos.map((fila, index) => (
-              <tr key={index}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {fila.fecha}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {formatCurrency(fila.ventas)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {fila.pedidos}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {formatCurrency(fila.pedidos > 0 ? fila.ventas / fila.pedidos : 0)}
-                </td>
+          <tbody className="divide-y divide-gray-100">
+            {analytics.ventasPorDia.map((row: any) => (
+              <tr key={row.fecha} className="hover:bg-gray-50">
+                <td className="px-6 py-4 font-medium text-gray-900">{row.fecha}</td>
+                <td className="px-6 py-4 text-right font-bold text-indigo-600">{formatCurrency(row.ventas)}</td>
+                <td className="px-6 py-4 text-right text-gray-600">{row.pedidos}</td>
+                <td className="px-6 py-4 text-right text-gray-400">{formatCurrency(row.pedidos > 0 ? row.ventas / row.pedidos : 0)}</td>
               </tr>
             ))}
           </tbody>
@@ -552,88 +292,34 @@ function ReporteVentas({ datos, pedidosRaw }: { datos: any[]; pedidosRaw: any[] 
   );
 }
 
-function ReporteProductos({ datos }: { datos: any[] }) {
-  const productoEstrella = datos.length > 0 ? datos[0] : null;
-  const totalVentas = datos.reduce((sum, prod) => sum + prod.total, 0);
-
+function ReporteProductos({ analytics }: { analytics: any }) {
   return (
-    <div>
-      {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <div className="flex items-center">
-            <Package className="w-8 h-8 text-blue-600 mr-3" />
-            <div>
-              <p className="text-sm text-blue-600">Producto Estrella</p>
-              <p className="text-xl font-bold text-blue-900">
-                {productoEstrella ? productoEstrella.nombre : 'N/A'}
-              </p>
-              {productoEstrella && (
-                <p className="text-sm text-blue-700">
-                  {productoEstrella.cantidad} unidades vendidas
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-          <div className="flex items-center">
-            <DollarSign className="w-8 h-8 text-green-600 mr-3" />
-            <div>
-              <p className="text-sm text-green-600">Producto Más Rentable</p>
-              <p className="text-xl font-bold text-green-900">
-                {productoEstrella ? productoEstrella.nombre : 'N/A'}
-              </p>
-              {totalVentas > 0 && (
-                <p className="text-sm text-green-700">
-                  {formatCurrency(totalVentas)} en ventas totales
-                </p>
-              )}
-            </div>
-          </div>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-blue-600 text-white p-6 rounded-2xl shadow-blue-200 shadow-lg">
+          <p className="text-blue-100 text-xs font-bold uppercase">Top Producto</p>
+          <h3 className="text-xl font-bold mt-1 line-clamp-1">{analytics.topProductos[0]?.nombre || 'N/A'}</h3>
+          <p className="text-2xl font-black mt-2">{analytics.topProductos[0]?.cantidad || 0} Uds.</p>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-gray-50">
+      <div className="overflow-hidden border border-gray-100 rounded-xl">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Producto
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Categoría
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Cantidad Vendida
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Total Ventas
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Pedidos
-              </th>
+              <th className="px-6 py-4 text-left font-bold text-gray-900">Producto</th>
+              <th className="px-6 py-4 text-left font-bold text-gray-900">Categoría</th>
+              <th className="px-6 py-4 text-right font-bold text-gray-900">Cantidad</th>
+              <th className="px-6 py-4 text-right font-bold text-gray-900">Total Ingresos</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {datos.map((producto, index) => (
-              <tr key={index}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {producto.nombre}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                  {producto.categoria}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {producto.cantidad}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {formatCurrency(producto.total)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {producto.pedidos}
-                </td>
+          <tbody className="divide-y divide-gray-100">
+            {analytics.topProductos.map((p: any) => (
+              <tr key={p.nombre} className="hover:bg-gray-50">
+                <td className="px-6 py-4 font-bold text-gray-900">{p.nombre}</td>
+                <td className="px-6 py-4"><span className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-600 font-medium">{p.categoria}</span></td>
+                <td className="px-6 py-4 text-right font-medium">{p.cantidad}</td>
+                <td className="px-6 py-4 text-right font-bold text-indigo-600">{formatCurrency(p.total)}</td>
               </tr>
             ))}
           </tbody>
@@ -643,40 +329,26 @@ function ReporteProductos({ datos }: { datos: any[] }) {
   );
 }
 
-function ReporteClientes({ datos }: { datos: any[] }) {
+function ReporteClientes({ analytics }: { analytics: any }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead className="bg-gray-50">
+    <div className="overflow-hidden border border-gray-100 rounded-xl">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Cliente
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Pedidos
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Total Gastado
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Última Compra
-            </th>
+            <th className="px-6 py-4 text-left font-bold text-gray-900">Cliente</th>
+            <th className="px-6 py-4 text-right font-bold text-gray-900">Pedidos</th>
+            <th className="px-6 py-4 text-right font-bold text-gray-900">Monto Comprado</th>
+            <th className="px-6 py-4 text-right font-bold text-gray-900">Más Reciente</th>
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {datos.map((cliente, index) => (
-            <tr key={index}>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                {cliente.nombre}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {cliente.pedidos}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {formatCurrency(cliente.total)}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {cliente.ultimaCompra ? getLocalDateTime(cliente.ultimaCompra) : 'N/A'}
+        <tbody className="divide-y divide-gray-100">
+          {analytics.topClientes.map((c: any) => (
+            <tr key={c.nombre} className="hover:bg-gray-50">
+              <td className="px-6 py-4 font-bold text-gray-900">{c.nombre}</td>
+              <td className="px-6 py-4 text-right font-medium">{c.pedidos}</td>
+              <td className="px-6 py-4 text-right font-bold text-indigo-600">{formatCurrency(c.total)}</td>
+              <td className="px-6 py-4 text-right text-gray-500 text-xs">
+                {c.ultimaCompra ? formatDateTimeMX(c.ultimaCompra) : 'N/A'}
               </td>
             </tr>
           ))}

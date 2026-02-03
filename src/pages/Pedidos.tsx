@@ -20,7 +20,7 @@ import {
   Edit,
   Trash2
 } from 'lucide-react';
-import { usePedidosStore, type Pedido } from '../lib/store/pedidosStore';
+import { usePedidosStore } from '../lib/store/pedidosStore';
 import { supabase } from '../lib/supabase/client';
 import { useCartStore } from '../lib/store/cartStore';
 import { ClienteDetalleModal } from '../components/ClienteDetalleModal';
@@ -190,15 +190,14 @@ const PedidoDetalleModal: React.FC<PedidoDetalleModalProps> = ({ isOpen, onClose
                 </div>
                 <div className="w-full bg-blue-200 rounded-full h-3 mb-2">
                   <div
-                    className={`h-3 rounded-full transition-all duration-500 ${
-                      progreso.porcentaje_completado === 100
-                        ? 'bg-green-600'
-                        : progreso.porcentaje_completado >= 70
+                    className={`h-3 rounded-full transition-all duration-500 ${progreso.porcentaje_completado === 100
+                      ? 'bg-green-600'
+                      : progreso.porcentaje_completado >= 70
                         ? 'bg-blue-600'
                         : progreso.porcentaje_completado >= 40
-                        ? 'bg-yellow-500'
-                        : 'bg-orange-500'
-                    }`}
+                          ? 'bg-yellow-500'
+                          : 'bg-orange-500'
+                      }`}
                     style={{ width: `${progreso.porcentaje_completado}%` }}
                   ></div>
                 </div>
@@ -212,11 +211,10 @@ const PedidoDetalleModal: React.FC<PedidoDetalleModalProps> = ({ isOpen, onClose
           {/* Información de Pago */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Estado de Pago</h3>
-            <div className={`p-4 rounded-lg border ${
-              isPedidoPagado
-                ? 'bg-green-50 border-green-200'
-                : 'bg-yellow-50 border-yellow-200'
-            }`}>
+            <div className={`p-4 rounded-lg border ${isPedidoPagado
+              ? 'bg-green-50 border-green-200'
+              : 'bg-yellow-50 border-yellow-200'
+              }`}>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-700">Total del pedido:</span>
@@ -446,7 +444,7 @@ export function Pedidos() {
     .sort(([, a], [, b]) => b - a)
     .slice(0, 3)
     .map(([nombre, monto], index) => ({ nombre, monto, posicion: index + 1 }));
-   const handleDeleteClick = (pedidoId: number, e: React.MouseEvent) => {
+  const handleDeleteClick = (pedidoId: number, e: React.MouseEvent) => {
     e.stopPropagation(); // Para que no se abra el detalle del pedido al dar click en borrar
     setPedidoToDelete(pedidoId);
     setIsDeleteModalOpen(true);
@@ -465,120 +463,127 @@ export function Pedidos() {
       <div className="p-4 sm:p-6 lg:p-8 flex flex-col h-full overflow-hidden">
         <div className="flex-shrink-0">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
-             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
-               <div className="flex items-center justify-between">
-                 <div className="w-8 h-8 md:w-12 md:h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                   <ShoppingCart className="w-4 h-4 md:w-6 md:h-6 text-blue-600" />
-                 </div>
-                 <div className="ml-2 md:ml-4 flex-1">
-                   <p className="text-xs md:text-sm font-medium text-gray-500">Total Activos</p>
-                   <p className="text-lg md:text-2xl font-bold text-gray-900">{estadisticas.total}</p>
-                   <p className="text-xs text-gray-500 mt-1">Monto en Juego</p>
-                   <p className="text-sm md:text-base font-semibold text-blue-600">{formatCurrency(estadisticas.montoTotal)}</p>
-                 </div>
-               </div>
-             </div>
+            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 p-4 md:p-6 transition-all hover:shadow-2xl hover:-translate-y-1 duration-300">
+              <div className="flex items-center justify-between">
+                <div className="w-10 h-10 md:w-14 md:h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-200">
+                  <ShoppingCart className="w-5 h-5 md:w-7 md:h-7 text-white" />
+                </div>
+                <div className="ml-3 md:ml-6 flex-1">
+                  <p className="text-[10px] md:text-xs font-black text-blue-600/60 uppercase tracking-widest mb-1">Total Activos</p>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-xl md:text-3xl font-black text-gray-900 leading-none">{estadisticas.total}</p>
+                    <p className="text-[10px] md:text-xs font-medium text-gray-400">pedidos</p>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <p className="text-xs md:text-sm font-black text-blue-600 italic">{formatCurrency(estadisticas.montoTotal)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-             {topCategorias.length > 0 ? (
-               <>
-                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
-                   <div className="flex items-center justify-between">
-                     <div className="w-8 h-8 md:w-12 md:h-12 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                       <TrendingUp className="w-4 h-4 md:w-6 md:h-6 text-green-600" />
-                     </div>
-                     <div className="ml-2 md:ml-4 flex-1">
-                       <div className="flex items-center justify-between">
-                         <p className="text-xs md:text-sm font-medium text-gray-500 truncate">{topCategorias[0].nombre}</p>
-                         <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-800 text-xs font-semibold rounded-full">#1</span>
-                       </div>
-                       <p className="text-lg md:text-2xl font-bold text-gray-900">{formatCurrency(topCategorias[0].monto)}</p>
-                     </div>
-                   </div>
-                 </div>
+            {topCategorias.length > 0 ? (
+              <>
+                <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 p-4 md:p-6 transition-all hover:shadow-2xl hover:-translate-y-1 duration-300">
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 md:w-14 md:h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-green-200">
+                      <TrendingUp className="w-5 h-5 md:w-7 md:h-7 text-white" />
+                    </div>
+                    <div className="ml-3 md:ml-6 flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] md:text-xs font-black text-green-600/60 uppercase tracking-widest truncate">{topCategorias[0].nombre}</p>
+                        <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[8px] font-black rounded-full ring-1 ring-green-200">#1</span>
+                      </div>
+                      <p className="text-lg md:text-2xl font-black text-gray-900 truncate">{formatCurrency(topCategorias[0].monto)}</p>
+                    </div>
+                  </div>
+                </div>
 
-                 {topCategorias[1] && (
-                   <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
-                     <div className="flex items-center justify-between">
-                       <div className="w-8 h-8 md:w-12 md:h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                         <Package className="w-4 h-4 md:w-6 md:h-6 text-blue-600" />
-                       </div>
-                       <div className="ml-2 md:ml-4 flex-1">
-                         <div className="flex items-center justify-between">
-                           <p className="text-xs md:text-sm font-medium text-gray-500 truncate">{topCategorias[1].nombre}</p>
-                           <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full">#2</span>
-                         </div>
-                         <p className="text-lg md:text-2xl font-bold text-gray-900">{formatCurrency(topCategorias[1].monto)}</p>
-                       </div>
-                     </div>
-                   </div>
-                 )}
+                {topCategorias[1] && (
+                  <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 p-4 md:p-6 transition-all hover:shadow-2xl hover:-translate-y-1 duration-300">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 md:w-14 md:h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-200">
+                        <Package className="w-5 h-5 md:w-7 md:h-7 text-white" />
+                      </div>
+                      <div className="ml-3 md:ml-6 flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[10px] md:text-xs font-black text-indigo-600/60 uppercase tracking-widest truncate">{topCategorias[1].nombre}</p>
+                          <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-black rounded-full ring-1 ring-indigo-200">#2</span>
+                        </div>
+                        <p className="text-lg md:text-2xl font-black text-gray-900 truncate">{formatCurrency(topCategorias[1].monto)}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-                 {topCategorias[2] && (
-                   <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
-                     <div className="flex items-center justify-between">
-                       <div className="w-8 h-8 md:w-12 md:h-12 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                         <DollarSign className="w-4 h-4 md:w-6 md:h-6 text-amber-600" />
-                       </div>
-                       <div className="ml-2 md:ml-4 flex-1">
-                         <div className="flex items-center justify-between">
-                           <p className="text-xs md:text-sm font-medium text-gray-500 truncate">{topCategorias[2].nombre}</p>
-                           <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full">#3</span>
-                         </div>
-                         <p className="text-lg md:text-2xl font-bold text-gray-900">{formatCurrency(topCategorias[2].monto)}</p>
-                       </div>
-                     </div>
-                   </div>
-                 )}
-               </>
-             ) : (
-               <>
-                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
-                   <div className="flex items-center">
-                     <div className="w-8 h-8 md:w-12 md:h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                       <Package className="w-4 h-4 md:w-6 md:h-6 text-gray-400" />
-                     </div>
-                     <div className="ml-2 md:ml-4">
-                       <p className="text-xs md:text-sm font-medium text-gray-400">Sin datos</p>
-                     </div>
-                   </div>
-                 </div>
-                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
-                   <div className="flex items-center">
-                     <div className="w-8 h-8 md:w-12 md:h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                       <Package className="w-4 h-4 md:w-6 md:h-6 text-gray-400" />
-                     </div>
-                     <div className="ml-2 md:ml-4">
-                       <p className="text-xs md:text-sm font-medium text-gray-400">Sin datos</p>
-                     </div>
-                   </div>
-                 </div>
-                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
-                   <div className="flex items-center">
-                     <div className="w-8 h-8 md:w-12 md:h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                       <Package className="w-4 h-4 md:w-6 md:h-6 text-gray-400" />
-                     </div>
-                     <div className="ml-2 md:ml-4">
-                       <p className="text-xs md:text-sm font-medium text-gray-400">Sin datos</p>
-                     </div>
-                   </div>
-                 </div>
-               </>
-             )}
-           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 md:p-6 mb-4 md:mb-6">
-            <div className="relative max-w-md">
-              <Filter className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                {topCategorias[2] && (
+                  <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 p-4 md:p-6 transition-all hover:shadow-2xl hover:-translate-y-1 duration-300">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 md:w-14 md:h-14 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-amber-200">
+                        <DollarSign className="w-5 h-5 md:w-7 md:h-7 text-white" />
+                      </div>
+                      <div className="ml-3 md:ml-6 flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[10px] md:text-xs font-black text-amber-600/60 uppercase tracking-widest truncate">{topCategorias[2].nombre}</p>
+                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black rounded-full ring-1 ring-amber-200">#3</span>
+                        </div>
+                        <p className="text-lg md:text-2xl font-black text-gray-900 truncate">{formatCurrency(topCategorias[2].monto)}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 md:w-12 md:h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <Package className="w-4 h-4 md:w-6 md:h-6 text-gray-400" />
+                    </div>
+                    <div className="ml-2 md:ml-4">
+                      <p className="text-xs md:text-sm font-medium text-gray-400">Sin datos</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 md:w-12 md:h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <Package className="w-4 h-4 md:w-6 md:h-6 text-gray-400" />
+                    </div>
+                    <div className="ml-2 md:ml-4">
+                      <p className="text-xs md:text-sm font-medium text-gray-400">Sin datos</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 md:w-12 md:h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <Package className="w-4 h-4 md:w-6 md:h-6 text-gray-400" />
+                    </div>
+                    <div className="ml-2 md:ml-4">
+                      <p className="text-xs md:text-sm font-medium text-gray-400">Sin datos</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-3 md:p-4 mb-4 md:mb-6">
+            <div className="relative max-w-sm">
+              <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <select
                 value={selectedEstado}
                 onChange={(e) => setSelectedEstado(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full pl-11 pr-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all text-sm font-medium appearance-none"
               >
-                <option value="">Todos los estados</option>
+                <option value="">Filtrar todos los estados</option>
                 <option value="Pendiente">Pendiente</option>
                 <option value="En Preparación">En Preparación</option>
                 <option value="Listo para Entrega">Listo para Entrega</option>
                 <option value="En Reparto">En Reparto</option>
               </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <ArrowRight className="w-4 h-4 rotate-90" />
+              </div>
             </div>
           </div>
         </div>
@@ -601,142 +606,130 @@ export function Pedidos() {
                 return (
                   <div
                     key={pedido.id}
-                    className="bg-white rounded-lg shadow-sm border-l-4 border-gray-200 hover:shadow-md transition-all p-4"
-                    style={{ borderLeftColor: estadoColor }}
+                    className="group bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl hover:border-blue-500/10 transition-all duration-300 overflow-hidden"
                   >
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
-                      <div className="flex items-start md:items-center space-x-4 flex-1">
-                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                          <Package className="w-6 h-6 text-blue-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-col space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <h3 className="text-lg font-semibold text-gray-900">
-                                  Pedido #{pedido.id}
-                                </h3>
-                                <div className="flex items-center mt-1 text-xs text-gray-500">
-                                  <Clock className="w-3 h-3 mr-1" />
-                                  <span>{getTimeElapsed(pedido.insert_date || '')}</span>
-                                  <span className="mx-2">•</span>
-                                  <span>{formatDate(pedido.insert_date || new Date())}</span>
-                                </div>
+                    <div className="flex flex-col md:flex-row md:items-stretch overflow-hidden">
+                      {/* Barra Lateral de Estado */}
+                      <div
+                        className="w-full md:w-2 h-2 md:h-auto"
+                        style={{ backgroundColor: estadoColor }}
+                      />
+
+                      <div className="flex-1 p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-start md:items-center gap-4 flex-1 min-w-0">
+                          <div className="hidden md:flex w-14 h-14 bg-gray-50 rounded-2xl items-center justify-center flex-shrink-0 group-hover:bg-blue-50 transition-colors">
+                            <Package className="w-7 h-7 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                          </div>
+
+                          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-lg font-black text-gray-900">Pedido #{pedido.id}</h3>
+                              <span
+                                className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-white shadow-sm"
+                                style={{ backgroundColor: estadoColor }}
+                              >
+                                {pedido.estado_nombre}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-gray-500 font-medium">
+                              <div className="flex items-center">
+                                <Clock className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
+                                {getTimeElapsed(pedido.insert_date || '')}
+                              </div>
+                              <div className="flex items-center">
+                                <Calendar className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
+                                {formatDate(pedido.insert_date || new Date())}
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="flex items-center">
-                                <User className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
-                                <span className="text-sm text-gray-900 truncate">
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="flex items-center bg-gray-50/50 p-2 rounded-xl border border-gray-100/50">
+                                <User className="w-4 h-4 mr-2 text-blue-500/70" />
+                                <span className="text-xs font-bold text-gray-700 truncate">
                                   {pedido.cliente_nombre || 'Sin cliente'}
                                 </span>
                               </div>
-                              <div className="flex items-center">
+                              <div className="flex items-center bg-gray-50/50 p-2 rounded-xl border border-gray-100/50">
                                 {pedido.tipo_entrega_nombre?.toLowerCase().includes('domicilio') ? (
-                                  <Home className="w-4 h-4 mr-2 text-gray-400" />
+                                  <Home className="w-4 h-4 mr-2 text-emerald-500/70" />
                                 ) : (
-                                  <ShoppingBag className="w-4 h-4 mr-2 text-gray-400" />
+                                  <ShoppingBag className="w-4 h-4 mr-2 text-amber-500/70" />
                                 )}
-                                <span className="text-sm text-gray-700 truncate">
+                                <span className="text-xs font-bold text-gray-700 truncate">
                                   {pedido.tipo_entrega_nombre || 'N/A'}
                                 </span>
                               </div>
-                              <div className="flex items-center col-span-2">
-                                <DollarSign className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
-                                <span className="text-base font-bold text-gray-900">
+                              <div className="flex items-center bg-blue-50/30 p-2 rounded-xl border border-blue-100/30">
+                                <DollarSign className="w-4 h-4 mr-1.5 text-blue-600" />
+                                <span className="text-sm font-black text-blue-700">
                                   {formatCurrency(pedido.total || 0)}
                                 </span>
                               </div>
                             </div>
 
-                            {/* Progreso de cocina inline */}
+                            {/* Progreso de cocina inline Premium */}
                             {progresoPedidos[pedido.id!] && progresoPedidos[pedido.id!].total_items > 0 && (
-                              <div className="p-2 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border border-blue-200">
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-xs font-medium text-blue-900 flex items-center">
-                                    <TrendingUp className="w-3 h-3 mr-1" />
-                                    Cocina
-                                  </span>
-                                  <span className="text-xs font-bold text-blue-900">
-                                    {progresoPedidos[pedido.id!].items_listos}/{progresoPedidos[pedido.id!].total_items}
+                              <div className="mt-2 p-2.5 bg-gray-50/80 rounded-xl border border-gray-100">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="relative">
+                                      <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
+                                      <div className="absolute inset-0 animate-ping opacity-20 w-3.5 h-3.5 bg-blue-400 rounded-full" />
+                                    </div>
+                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Progreso Cocina</span>
+                                  </div>
+                                  <span className="text-[10px] font-black text-blue-700">
+                                    {progresoPedidos[pedido.id!].items_listos} de {progresoPedidos[pedido.id!].total_items} listos
                                   </span>
                                 </div>
-                                <div className="w-full bg-blue-200 rounded-full h-2">
+                                <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                                   <div
-                                    className={`h-2 rounded-full transition-all duration-500 ${
-                                      progresoPedidos[pedido.id!].porcentaje_completado === 100
-                                        ? 'bg-green-600'
-                                        : progresoPedidos[pedido.id!].porcentaje_completado >= 70
-                                        ? 'bg-blue-600'
-                                        : progresoPedidos[pedido.id!].porcentaje_completado >= 40
-                                        ? 'bg-yellow-500'
-                                        : 'bg-orange-500'
-                                    }`}
+                                    className={`h-full rounded-full transition-all duration-700 ease-out ${progresoPedidos[pedido.id!].porcentaje_completado === 100
+                                      ? 'bg-gradient-to-r from-green-500 to-emerald-600'
+                                      : 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                                      }`}
                                     style={{ width: `${progresoPedidos[pedido.id!].porcentaje_completado}%` }}
-                                  ></div>
+                                  />
                                 </div>
                               </div>
                             )}
                           </div>
                         </div>
-                      </div>
-                      <div className="flex flex-col md:flex-row md:items-center space-y-3 md:space-y-0 md:space-x-4">
-                        <div className="flex items-center justify-between md:justify-start">
-                          <span className="text-sm text-gray-600 md:hidden">Estado:</span>
-                          <span
-                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
-                            style={{ backgroundColor: estadoColor }}
-                          >
-                            {pedido.estado_nombre}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {/* --- INICIO CÓDIGO NUEVO: Botón Editar --- */}
+
+                        <div className="flex sm:flex-col md:flex-row items-center gap-2 flex-shrink-0 md:pl-4 md:border-l border-gray-100">
                           {['Pendiente', 'En Preparación'].includes(pedido.estado_nombre || '') && (
-<button
+                            <button
                               onClick={async (e) => {
                                 e.stopPropagation();
-
                                 try {
                                   toast.loading('Cargando pedido...', { id: 'loading-edit' });
-
-                                  // 1. Fetch con la query corregida
                                   const pedidoCompleto = await usePedidosStore.getState().fetchPedidoDetalles(pedido.id!);
-
                                   if (!pedidoCompleto) return;
-
-                                  // 2. Cargar en carrito
                                   useCartStore.getState().cargarPedidoParaEditar(pedidoCompleto);
-
-                                  // 3. Navegar usando React Router (sin recarga de página)
                                   toast.success('Abriendo editor...', { id: 'loading-edit' });
                                   navigate('/vender');
-
                                 } catch (error) {
-                                  console.error('[EDITAR] Error:', error);
-                                  toast.error('Error al intentar editar', { id: 'loading-edit' });
+                                  toast.error('Error al editar', { id: 'loading-edit' });
                                 }
                               }}
-                              className="p-2 text-yellow-600 hover:bg-yellow-100 rounded-lg transition-colors border border-transparent hover:border-yellow-200"
+                              className="p-2.5 text-amber-600 hover:bg-amber-50 rounded-xl transition-all border border-transparent hover:border-amber-200 active:scale-95 shadow-sm bg-white"
                               title="Editar Pedido"
                             >
                               <Edit className="w-5 h-5" />
                             </button>
                           )}
 
-{/* --- NUEVO: Botón Eliminar (Basura) --- */}
-                          {/* Solo permitimos borrar si NO está completado/entregado para seguridad */}
                           {['Pendiente', 'Cancelado'].includes(pedido.estado_nombre || '') && (
                             <button
                               onClick={(e) => handleDeleteClick(pedido.id!, e)}
-                              className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors border border-transparent hover:border-red-200"
+                              className="p-2.5 text-rose-600 hover:bg-rose-50 rounded-xl transition-all border border-transparent hover:border-rose-200 active:scale-95 shadow-sm bg-white"
                               title="Eliminar Pedido"
                             >
                               <Trash2 className="w-5 h-5" />
                             </button>
                           )}
-                          
+
                           <button
                             onClick={async () => {
                               await fetchPedidoDetalles(pedido.id!);
@@ -746,12 +739,10 @@ export function Pedidos() {
                                 setIsPedidoModalOpen(true);
                               }
                             }}
-                      
-                            className="flex-1 md:flex-none inline-flex items-center justify-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                            className="flex-1 md:flex-none inline-flex items-center justify-center px-4 py-2.5 bg-gray-900 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-gray-800 transition-all shadow-lg active:scale-95 group/btn"
                           >
-                            
-                            <Eye className="w-4 h-4 mr-2" />
-                            Ver Detalle
+                            <Eye className="w-4 h-4 mr-2 group-hover/btn:scale-110 transition-transform" />
+                            Detalle
                           </button>
                         </div>
                       </div>

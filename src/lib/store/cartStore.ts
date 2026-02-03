@@ -85,7 +85,8 @@ interface CartState {
 
   // Cart item editing
   replaceCartItem: (oldItemId: string, newProduct: any, newSalsas: any[]) => void;
-  cargarPedidoParaEditar: (pedido: any) => void; // <--- NUEVO: La función mágica
+  cargarPedidoParaEditar: (pedido: any) => void;
+  resetCartFull: () => void;
 }
 
 const getCartStorageKey = () => {
@@ -136,7 +137,7 @@ export const useCartStore = create<CartState>()(
           const precioTotalCorrecto = precioBaseActual + precioSalsas;
 
           if (precioTotalCorrecto !== item.precio) {
-            toast.warning(`Precio actualizado para ${item.nombre}: ${item.precio} → ${precioTotalCorrecto}`);
+            toast(`Precio actualizado para ${item.nombre}: ${item.precio} → ${precioTotalCorrecto}`, { icon: '⚠️' });
             console.log(`[Cart] Ajustando precio de ${item.nombre}: ${item.precio} -> ${precioTotalCorrecto}`);
             cartUpdated = true;
             return {
@@ -156,31 +157,31 @@ export const useCartStore = create<CartState>()(
 
       addToCarrito: (producto, salsas = []) => {
         const carrito = get().carrito;
-        
+
         // Generar un ID único basado en el producto y las salsas
         const itemId = `${producto.id}-${salsas.map(s => s.id).sort().join('-')}`;
-        
+
         const existingItem = carrito.find(item => item.id === itemId);
-        
+
         if (existingItem) {
           // Si ya existe, incrementar cantidad
           get().updateCarritoQuantity(itemId, existingItem.cantidad + 1);
         } else {
           // Si no existe, añadir nuevo item
-          const precioProducto = producto.precio_descuento && producto.precio_descuento > 0 
-            ? producto.precio_descuento 
+          const precioProducto = producto.precio_descuento && producto.precio_descuento > 0
+            ? producto.precio_descuento
             : producto.precio_regular || producto.precio || 0;
-            
-// CORRECCIÓN: Calcular el costo total de las salsas
+
+          // CORRECCIÓN: Calcular el costo total de las salsas
           const precioSalsas = salsas.reduce((total: number, s: any) => total + (s.precio || 0), 0);
-          
+
           // El precio unitario final es: Producto + Salsas
           const precioFinal = precioProducto + precioSalsas;
 
           const nombreConSalsas = salsas.length > 0
             ? `${producto.nombre} (${salsas.map((s: any) => s.nombre).join(', ')})`
             : producto.nombre;
-            
+
           const newItem: CarritoItem = {
             id: itemId,
             producto_id: producto.id,
@@ -193,11 +194,11 @@ export const useCartStore = create<CartState>()(
             salsas_seleccionadas: salsas,
             producto_original: producto.nombre,
           };
-          
+
           set(state => ({
             carrito: [...state.carrito, newItem]
           }));
-          
+
           toast.success(`${nombreConSalsas} añadido al carrito`);
         }
       },
@@ -229,10 +230,10 @@ export const useCartStore = create<CartState>()(
           get().removeFromCarrito(itemId);
           return;
         }
-        
+
         set(state => ({
-          carrito: state.carrito.map(item => 
-            item.id === itemId 
+          carrito: state.carrito.map(item =>
+            item.id === itemId
               ? { ...item, cantidad, subtotal: item.precio * cantidad }
               : item
           )
@@ -249,15 +250,18 @@ export const useCartStore = create<CartState>()(
           direccionEnvio: null,
           zonaEntregaId: null,
           notasEntrega: '',
-          editingOrderId: null,
           descuento: 0,
           descuentoTipo: 'fijo'
         });
-        // Limpiar sessionStorage también
+      },
+
+      resetCartFull: () => {
+        get().clearCarrito();
+        set({ editingOrderId: null });
         try {
           sessionStorage.removeItem('editing-order-id');
         } catch (e) {
-          console.warn('No se pudo limpiar sessionStorage:', e);
+          console.warn('Error clearing sessionStorage:', e);
         }
       },
 
@@ -364,111 +368,111 @@ export const useCartStore = create<CartState>()(
         toast.success('Producto actualizado en el carrito');
       },
 
-        cargarPedidoParaEditar: (pedido: any) => {
-    const logPrefix = `[CARGAR-PEDIDO-EDITAR-${pedido.id}]`;
-    console.log(`\n${logPrefix} INICIANDO CARGA DE PEDIDO PARA EDICIÓN`);
-    console.log(`${logPrefix} Timestamp: ${new Date().toISOString()}`);
+      cargarPedidoParaEditar: (pedido: any) => {
+        const logPrefix = `[CARGAR-PEDIDO-EDITAR-${pedido.id}]`;
+        console.log(`\n${logPrefix} INICIANDO CARGA DE PEDIDO PARA EDICIÓN`);
+        console.log(`${logPrefix} Timestamp: ${new Date().toISOString()}`);
 
-    try {
-      // 1. Convertir los detalles del pedido al formato del carrito
-      console.log(`${logPrefix} [A] Convertiendo detalles del pedido...`);
-      console.log(`${logPrefix}    - Total de detalles a convertir: ${pedido.detalles?.length || 0}`);
+        try {
+          // 1. Convertir los detalles del pedido al formato del carrito
+          console.log(`${logPrefix} [A] Convertiendo detalles del pedido...`);
+          console.log(`${logPrefix}    - Total de detalles a convertir: ${pedido.detalles?.length || 0}`);
 
-      const itemsCarrito = pedido.detalles.map((d: any, idx: number) => {
-        // --- CORRECCIÓN CRÍTICA (Paso 2): Obtener ID de forma segura (Raíz O Anidado) ---
-        const realProductoId = d.producto_id || d.producto?.id;
+          const itemsCarrito = pedido.detalles.map((d: any, idx: number) => {
+            // --- CORRECCIÓN CRÍTICA (Paso 2): Obtener ID de forma segura (Raíz O Anidado) ---
+            const realProductoId = d.producto_id || d.producto?.id;
 
-        if (!realProductoId) {
-          console.error(`${logPrefix} ❌ Error crítico: Detalle [${idx}] sin ID de producto`, d);
-          return null; // Marcamos como null para filtrar después
+            if (!realProductoId) {
+              console.error(`${logPrefix} ❌ Error crítico: Detalle [${idx}] sin ID de producto`, d);
+              return null; // Marcamos como null para filtrar después
+            }
+
+            const item = {
+              // Usamos el ID real para generar el ID único del item en carrito
+              id: `${realProductoId}-${Math.random().toString(36).substring(7)}`,
+              producto_id: realProductoId, // Asignación segura
+              nombre: d.producto?.nombre || d.nombre || 'Producto sin nombre',
+              precio: d.precio_unitario,
+              cantidad: d.cantidad,
+              subtotal: d.cantidad * d.precio_unitario,
+              imagen_url: d.producto?.imagenes_urls?.[0] || null,
+              salsas_seleccionadas: d.salsas_seleccionadas || [],
+              producto_original: d.producto?.nombre,
+              codigo: d.producto?.codigo
+            };
+
+            console.log(`${logPrefix}    - Detalle [${idx}]:`, {
+              producto_id: item.producto_id,
+              nombre: item.nombre,
+              cantidad: item.cantidad,
+              precio: item.precio,
+              subtotal: item.subtotal,
+              salsasCount: item.salsas_seleccionadas.length
+            });
+            return item;
+          }).filter((item: any) => item !== null); // <--- Filtramos los items corruptos
+
+          // 2. Recuperación robusta del cliente
+          let clienteRecuperado = null;
+
+          // Intentamos reconstruir el cliente incluso si el objeto 'pedido.cliente' viene vacío
+          if (pedido.cliente_id) {
+            clienteRecuperado = {
+              id: pedido.cliente_id,
+              // Prioridad: 1. Objeto anidado, 2. Campos planos de la vista, 3. Valor por defecto
+              nombre: pedido.cliente?.nombre || pedido.cliente_nombre || 'Cliente',
+              telefono: pedido.cliente?.telefono || pedido.cliente_telefono || '',
+              email: pedido.cliente?.email || '',
+              permite_credito: pedido.cliente?.permite_credito || false,
+              saldo_actual: pedido.cliente?.saldo_actual || 0,
+              direccion: pedido.direccion_envio // Conservamos la dirección guardada en el pedido
+            };
+          }
+
+          const stateData = {
+            carrito: itemsCarrito,
+            clienteSeleccionado: clienteRecuperado,
+            tipoEntregaId: pedido.tipo_entrega_id,
+            zonaEntregaId: pedido.zona_entrega_id,
+            // Manejo seguro de dirección
+            direccionEnvio: typeof pedido.direccion_envio === 'string'
+              ? { calle: pedido.direccion_envio, ciudad: '', referencias: '' }
+              : pedido.direccion_envio,
+            notas: pedido.notas || '',
+            notasEntrega: pedido.notas_entrega || '',
+            costoEnvio: pedido.costo_envio || 0,
+            descuento: pedido.descuentos || 0,
+            descuentoTipo: 'fijo' as const,
+            editingOrderId: pedido.id
+          };
+
+          console.log(`${logPrefix} [B] Llamando set() con nuevo estado...`);
+          set(stateData);
+          console.log(`${logPrefix} [B] ✓ Estado actualizado en Zustand`);
+
+          // 3. Marcar en sessionStorage para indicar que estamos editando
+          console.log(`${logPrefix} [C] Guardando en sessionStorage...`);
+          try {
+            sessionStorage.setItem('editing-order-id', pedido.id.toString());
+            console.log(`${logPrefix} [C] ✓ sessionStorage['editing-order-id'] = '${pedido.id}'`);
+          } catch (e) {
+            console.error(`${logPrefix} [C] ❌ Error guardando sessionStorage:`, e);
+          }
+
+          console.log(`${logPrefix} [D] Mostrando toast...`);
+          toast.success(`Editando pedido #${pedido.id}`);
+          console.log(`${logPrefix} [D] ✓ Toast mostrado`);
+
+          console.log(`${logPrefix} ✅ CARGA DE PEDIDO COMPLETADA\n`);
+        } catch (error) {
+          console.error(`${logPrefix} ❌ ERROR DURANTE CARGA:`, error);
+          if (error instanceof Error) {
+            console.error(`${logPrefix} Error message: ${error.message}`);
+            console.error(`${logPrefix} Stack: ${error.stack}`);
+          }
+          throw error;
         }
-
-        const item = {
-          // Usamos el ID real para generar el ID único del item en carrito
-          id: `${realProductoId}-${Math.random().toString(36).substring(7)}`,
-          producto_id: realProductoId, // Asignación segura
-          nombre: d.producto?.nombre || d.nombre || 'Producto sin nombre',
-          precio: d.precio_unitario,
-          cantidad: d.cantidad,
-          subtotal: d.cantidad * d.precio_unitario,
-          imagen_url: d.producto?.imagenes_urls?.[0] || null,
-          salsas_seleccionadas: d.salsas_seleccionadas || [],
-          producto_original: d.producto?.nombre,
-          codigo: d.producto?.codigo
-        };
-
-        console.log(`${logPrefix}    - Detalle [${idx}]:`, {
-          producto_id: item.producto_id,
-          nombre: item.nombre,
-          cantidad: item.cantidad,
-          precio: item.precio,
-          subtotal: item.subtotal,
-          salsasCount: item.salsas_seleccionadas.length
-        });
-        return item;
-      }).filter((item: any) => item !== null); // <--- Filtramos los items corruptos
-
-      // 2. Recuperación robusta del cliente
-      let clienteRecuperado = null;
-      
-      // Intentamos reconstruir el cliente incluso si el objeto 'pedido.cliente' viene vacío
-      if (pedido.cliente_id) {
-        clienteRecuperado = {
-          id: pedido.cliente_id,
-          // Prioridad: 1. Objeto anidado, 2. Campos planos de la vista, 3. Valor por defecto
-          nombre: pedido.cliente?.nombre || pedido.cliente_nombre || 'Cliente',
-          telefono: pedido.cliente?.telefono || pedido.cliente_telefono || '',
-          email: pedido.cliente?.email || '',
-          permite_credito: pedido.cliente?.permite_credito || false,
-          saldo_actual: pedido.cliente?.saldo_actual || 0,
-          direccion: pedido.direccion_envio // Conservamos la dirección guardada en el pedido
-        };
-      }
-
-      const stateData = {
-        carrito: itemsCarrito,
-        clienteSeleccionado: clienteRecuperado,
-        tipoEntregaId: pedido.tipo_entrega_id,
-        zonaEntregaId: pedido.zona_entrega_id,
-        // Manejo seguro de dirección
-        direccionEnvio: typeof pedido.direccion_envio === 'string'
-          ? { calle: pedido.direccion_envio, ciudad: '', referencias: '' }
-          : pedido.direccion_envio,
-        notas: pedido.notas || '',
-        notasEntrega: pedido.notas_entrega || '',
-        costoEnvio: pedido.costo_envio || 0,
-        descuento: pedido.descuentos || 0,
-        descuentoTipo: 'fijo',
-        editingOrderId: pedido.id
-      };
-
-      console.log(`${logPrefix} [B] Llamando set() con nuevo estado...`);
-      set(stateData);
-      console.log(`${logPrefix} [B] ✓ Estado actualizado en Zustand`);
-
-      // 3. Marcar en sessionStorage para indicar que estamos editando
-      console.log(`${logPrefix} [C] Guardando en sessionStorage...`);
-      try {
-        sessionStorage.setItem('editing-order-id', pedido.id.toString());
-        console.log(`${logPrefix} [C] ✓ sessionStorage['editing-order-id'] = '${pedido.id}'`);
-      } catch (e) {
-        console.error(`${logPrefix} [C] ❌ Error guardando sessionStorage:`, e);
-      }
-
-      console.log(`${logPrefix} [D] Mostrando toast...`);
-      toast.success(`Editando pedido #${pedido.id}`);
-      console.log(`${logPrefix} [D] ✓ Toast mostrado`);
-
-      console.log(`${logPrefix} ✅ CARGA DE PEDIDO COMPLETADA\n`);
-    } catch (error) {
-      console.error(`${logPrefix} ❌ ERROR DURANTE CARGA:`, error);
-      if (error instanceof Error) {
-        console.error(`${logPrefix} Error message: ${error.message}`);
-        console.error(`${logPrefix} Stack: ${error.stack}`);
-      }
-      throw error;
-    }
-  },
+      },
 
       setDescuento: (monto, tipo) => {
         set({ descuento: monto, descuentoTipo: tipo });

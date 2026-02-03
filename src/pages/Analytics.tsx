@@ -1,197 +1,57 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { TrendingUp, Users, Clock, Award, AlertCircle, Calendar } from 'lucide-react';
-import { supabase } from '../lib/supabase/client';
-import { formatCurrency } from '../lib/utils/formatters';
-import { getDateRangeMexico, getLocalDateStr } from '../lib/utils/time';
-import { filterProductosByCategoria, filterPedidosByCategoria, ModoFiltroCategorias } from '../lib/utils/orderFilters';
-import { usePedidosStore } from '../lib/store/pedidosStore';
+import { useState } from 'react';
 import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
+  TrendingUp,
+  Package,
+  Users,
+  MapPin,
+  DollarSign,
+  BarChart3,
+} from 'lucide-react';
+import { useDashboardData } from '../hooks/useDashboardData';
+import { getDateRangeMexico } from '../lib/utils/time';
+import { formatCurrency } from '../lib/utils/format';
+import {
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
+  PieChart,
+  Pie,
+  Cell,
+  Legend
 } from 'recharts';
-import toast from 'react-hot-toast';
-
-interface MetricasVendedor {
-  vendedor_id: string;
-  vendedor_email: string;
-  vendedor_nombre: string;
-  total_ventas: number;
-  veces_ofrecio_acompanamiento: number;
-  veces_acepto_acompanamiento: number;
-  veces_ofrecio_postre: number;
-  veces_acepto_postre: number;
-  tasa_conversion_acompanamiento: number;
-  tasa_conversion_postre: number;
-  tiempo_entrega_promedio: number;
-}
-
-interface ProductoTopVenta {
-  producto_id: number;
-  producto_nombre: string;
-  categoria_nombre: string;
-  unidades_vendidas: number;
-  ingresos_totales: number;
-  cantidad_pedidos: number;
-}
-
-interface TendenciaTiempo {
-  hora: number;
-  dia_semana: number;
-  cantidad_pedidos: number;
-  tiempo_promedio: number;
-  tiempo_minimo: number;
-  tiempo_maximo: number;
-}
-
-interface ResumenVentas {
-  total_pedidos: number;
-  pedidos_completados: number;
-  pedidos_pendientes: number;
-  ingresos_totales: number;
-  ticket_promedio: number;
-  tiempo_entrega_promedio: number;
-}
 
 export default function Analytics() {
-  const { pedidos, fetchPedidosConDetalles } = usePedidosStore();
-  const [isLoading, setIsLoading] = useState(true);
-  const [periodoSeleccionado, setPeriodoSeleccionado] = useState<'hoy' | 'semana' | 'mes'>('hoy');
-  const [filtroCategoria, setFiltroCategoria] = useState<ModoFiltroCategorias>('todos');
-  const [metricasVendedores, setMetricasVendedores] = useState<MetricasVendedor[]>([]);
-  const [productosTop, setProductosTop] = useState<ProductoTopVenta[]>([]);
-  const [tendenciasTiempo, setTendenciasTiempo] = useState<TendenciaTiempo[]>([]);
-  const [resumenVentas, setResumenVentas] = useState<ResumenVentas | null>(null);
+  const [rangeType, setRangeType] = useState<'today' | 'week' | 'month' | 'year'>('month');
 
-  const obtenerFechasPeriodo = () => {
-    // Usar las fechas convertidas a zona de México
-    const [fechaInicio, fechaFin] = getDateRangeMexico(
-      periodoSeleccionado === 'hoy' ? 'today' : periodoSeleccionado === 'semana' ? 'week' : 'month'
-    );
+  const [dateRange, setDateRange] = useState(() => {
+    const [start, end] = getDateRangeMexico('month');
+    return { start, end };
+  });
 
-    return {
-      fechaInicio,
-      fechaFin,
-    };
+  const { data: analytics, loading } = useDashboardData(
+    dateRange.start,
+    dateRange.end,
+    { includeCancelled: false }
+  );
+
+  const COLORES = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+  const handleRangeChange = (type: 'today' | 'week' | 'month' | 'year') => {
+    setRangeType(type);
+    const [start, end] = getDateRangeMexico(type);
+    setDateRange({ start, end });
   };
 
-  const cargarDatos = async () => {
-    setIsLoading(true);
-    try {
-      const { fechaInicio, fechaFin } = obtenerFechasPeriodo();
-
-      const [
-        metricasResponse,
-        productosResponse,
-        tendenciasResponse,
-        resumenResponse,
-        _,
-      ] = await Promise.all([
-        supabase.from('v_metricas_vendedores').select('*'),
-        supabase.rpc('get_productos_top_ventas', {
-          p_fecha_inicio: fechaInicio,
-          p_fecha_fin: fechaFin,
-          p_limite: 10,
-        }),
-        supabase.rpc('get_tendencia_tiempos_entrega', {
-          p_fecha_inicio: fechaInicio,
-          p_fecha_fin: fechaFin,
-        }),
-        supabase.rpc('get_resumen_ventas_dia', {
-          p_fecha: getLocalDateStr(new Date()),
-        }),
-        fetchPedidosConDetalles(),
-      ]);
-
-      if (metricasResponse.error) throw metricasResponse.error;
-      if (productosResponse.error) throw productosResponse.error;
-      if (tendenciasResponse.error) throw tendenciasResponse.error;
-      if (resumenResponse.error) throw resumenResponse.error;
-
-      setMetricasVendedores(metricasResponse.data || []);
-      setProductosTop(productosResponse.data || []);
-      setTendenciasTiempo(tendenciasResponse.data || []);
-      setResumenVentas(resumenResponse.data?.[0] || null);
-    } catch (error) {
-      console.error('Error cargando analytics:', error);
-      toast.error('Error al cargar los datos de análisis');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    cargarDatos();
-  }, [periodoSeleccionado]);
-
-  const productosTopFiltrados = useMemo(() => {
-    return filterProductosByCategoria(productosTop, filtroCategoria, 'Desayunos');
-  }, [productosTop, filtroCategoria]);
-
-  const resumenVentasFiltrado = useMemo(() => {
-    if (!resumenVentas) return null;
-
-    const todayStr = getLocalDateStr(new Date());
-    const pedidosHoy = pedidos.filter(p => {
-      if (!p.insert_date) return false;
-      return (
-        getLocalDateStr(p.insert_date) === todayStr &&
-        (p.estado_nombre === 'Completado' || p.estado_nombre === 'En Reparto')
-      );
-    });
-
-    const pedidosFiltrados = filterPedidosByCategoria(pedidosHoy, filtroCategoria, 54);
-
-    const ingresos_totales = pedidosFiltrados.reduce((sum, p) => sum + (p.total || 0), 0);
-    const ticket_promedio = pedidosFiltrados.length > 0
-      ? ingresos_totales / pedidosFiltrados.length
-      : 0;
-
-    return {
-      ...resumenVentas,
-      ingresos_totales,
-      ticket_promedio,
-    };
-  }, [resumenVentas, pedidos, filtroCategoria]);
-
-  const getDiaSemanaLabel = (dia: number) => {
-    const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    return dias[dia];
-  };
-
-  const datosGraficoTiempos = tendenciasTiempo.map(t => ({
-    hora: `${t.hora}:00`,
-    promedio: t.tiempo_promedio,
-    minimo: t.tiempo_minimo,
-    maximo: t.tiempo_maximo,
-  }));
-
-  const datosRadarVendedores = metricasVendedores.slice(0, 5).map(v => ({
-    vendedor: v.vendedor_nombre || v.vendedor_email?.split('@')[0] || 'Sin nombre',
-    ventas: v.total_ventas,
-    conversionAcomp: v.tasa_conversion_acompanamiento,
-    conversionPostre: v.tasa_conversion_postre,
-    tiempoEntrega: Math.round(v.tiempo_entrega_promedio),
-  }));
-
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8">
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-2 text-gray-600">Cargando análisis...</span>
+      <div className="h-full flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          <p className="text-gray-500 font-bold tracking-widest animate-pulse">CARGANDO INTELIGENCIA DE NEGOCIO...</p>
         </div>
       </div>
     );
@@ -199,297 +59,188 @@ export default function Analytics() {
 
   return (
     <div className="h-full overflow-y-auto bg-gray-50">
-      <div className="p-4 sm:p-6 lg:p-8">
-        <div className="space-y-4 mb-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Análisis Avanzado</h1>
-              <p className="text-gray-600 mt-1">Panel de métricas y tendencias del negocio</p>
-            </div>
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPeriodoSeleccionado('hoy')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  periodoSeleccionado === 'hoy'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Hoy
-              </button>
-              <button
-                onClick={() => setPeriodoSeleccionado('semana')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  periodoSeleccionado === 'semana'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                7 Días
-              </button>
-              <button
-                onClick={() => setPeriodoSeleccionado('mes')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  periodoSeleccionado === 'mes'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                30 Días
-              </button>
-            </div>
+        {/* Header con Selector de Rango */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+              <BarChart3 className="w-8 h-8 text-indigo-600" />
+              Análisis Avanzado
+            </h1>
+            <p className="text-sm text-gray-500 font-medium tracking-tight">
+              Datos consolidados de {rangeType === 'today' ? 'Hoy' : rangeType === 'week' ? 'esta Semana' : 'este Mes'}
+            </p>
           </div>
 
-          <div className="flex gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full sm:w-auto">
-            <button
-              onClick={() => setFiltroCategoria('todos')}
-              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${
-                filtroCategoria === 'todos'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Todos los Pedidos
-            </button>
-            <button
-              onClick={() => setFiltroCategoria('solo_desayunos')}
-              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${
-                filtroCategoria === 'solo_desayunos'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Solo Desayunos
-            </button>
-            <button
-              onClick={() => setFiltroCategoria('excluir_desayunos')}
-              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${
-                filtroCategoria === 'excluir_desayunos'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Sin Desayunos (Turno Regular)
-            </button>
+          <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+            {(['today', 'week', 'month'] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => handleRangeChange(type)}
+                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wider ${rangeType === type
+                  ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-md'
+                  : 'text-gray-400 hover:text-gray-900'
+                  }`}
+              >
+                {type === 'today' ? 'Hoy' : type === 'week' ? 'Semana' : 'Mes'}
+              </button>
+            ))}
           </div>
         </div>
 
-        {resumenVentasFiltrado && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Ingresos del Día</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    {formatCurrency(resumenVentasFiltrado.ingresos_totales)}
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6 text-green-600" />
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 mt-2">
-                {resumenVentasFiltrado.pedidos_completados} de {resumenVentasFiltrado.total_pedidos} pedidos completados
-              </p>
-            </div>
+        {/* KPIs Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <AnalyticCard
+            title="Ingresos Totales"
+            value={formatCurrency(analytics.totalVentas)}
+            icon={<DollarSign className="w-6 h-6 text-emerald-600" />}
+            subtitle={`${analytics.totalPedidos} transacciones exitosas`}
+          />
+          <AnalyticCard
+            title="Ticket Promedio"
+            value={formatCurrency(analytics.ticketPromedio)}
+            icon={<TrendingUp className="w-6 h-6 text-indigo-600" />}
+            subtitle="Gasto medio por cliente"
+          />
+          <AnalyticCard
+            title="A Domicilio"
+            value={analytics.pedidosDomicilio.toString()}
+            icon={<MapPin className="w-6 h-6 text-amber-600" />}
+            subtitle={`${analytics.totalPedidos > 0 ? ((analytics.pedidosDomicilio / analytics.totalPedidos) * 100).toFixed(0) : 0}% de los pedidos`}
+          />
+          <AnalyticCard
+            title="Top Producto"
+            value={analytics.topProductos[0]?.nombre || 'N/A'}
+            icon={<Package className="w-6 h-6 text-purple-600" />}
+            subtitle={`${analytics.topProductos[0]?.cantidad || 0} unidades vendidas`}
+          />
+        </div>
 
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Ticket Promedio</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    {formatCurrency(resumenVentasFiltrado.ticket_promedio)}
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Calendar className="w-6 h-6 text-blue-600" />
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 mt-2">
-                Promedio por pedido
-              </p>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Tiempo de Entrega</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    {Math.round(resumenVentasFiltrado.tiempo_entrega_promedio)} min
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-orange-600" />
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 mt-2">
-                Promedio de entrega prometido
-              </p>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Gráfico de Tendencia */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
+              <TrendingUp className="w-4 h-4 text-indigo-600" />
+              Curva de Crecimiento
+            </h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={analytics.ventasPorDia}>
+                <defs>
+                  <linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="fecha" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => `$${v}`} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}
+                  formatter={(v) => [formatCurrency(v as number), 'Ventas']}
+                />
+                <Area type="monotone" dataKey="ventas" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorVentas)" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-        )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center mb-6">
-              <Users className="w-5 h-5 text-blue-600 mr-2" />
-              <h3 className="text-lg font-semibold text-gray-900">Desempeño de Vendedores</h3>
-            </div>
+          {/* Gráfico de Zonas */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
+              <MapPin className="w-4 h-4 text-amber-600" />
+              Distribución por Zona
+            </h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={analytics.topUbicaciones}
+                  dataKey="cantidad"
+                  nameKey="zona"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                >
+                  {analytics.topUbicaciones.map((_: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={COLORES[index % COLORES.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend verticalAlign="bottom" height={36} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
 
-            {metricasVendedores.length > 0 ? (
-              <div className="space-y-4">
-                {metricasVendedores.slice(0, 5).map((vendedor, index) => (
-                  <div key={vendedor.vendedor_id} className="border border-gray-100 rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-                          <span className="text-sm font-bold text-blue-600">{index + 1}</span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {vendedor.vendedor_nombre || vendedor.vendedor_email}
-                          </p>
-                          <p className="text-sm text-gray-500">{vendedor.total_ventas} ventas</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-center gap-2">
-                          {vendedor.tasa_conversion_acompanamiento >= 50 && (
-                            <Award className="w-4 h-4 text-yellow-500" />
-                          )}
-                        </div>
-                      </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top Productos */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
+              <Package className="w-4 h-4 text-purple-600" />
+              Top 10 Productos
+            </h3>
+            <div className="space-y-4">
+              {analytics.topProductos.slice(0, 10).map((p: any, idx: number) => (
+                <div key={p.nombre} className="flex items-center gap-4">
+                  <span className="text-xs font-black text-gray-300 w-4">{idx + 1}</span>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-bold text-gray-700">{p.nombre}</span>
+                      <span className="text-xs font-black text-indigo-600">{p.cantidad}</span>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-gray-50 rounded p-2">
-                        <p className="text-xs text-gray-500">Conversión Acompañamiento</p>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {vendedor.tasa_conversion_acompanamiento.toFixed(1)}%
-                        </p>
-                      </div>
-                      <div className="bg-gray-50 rounded p-2">
-                        <p className="text-xs text-gray-500">Conversión Postre</p>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {vendedor.tasa_conversion_postre.toFixed(1)}%
-                        </p>
-                      </div>
+                    <div className="w-full bg-gray-50 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-indigo-500 h-full rounded-full"
+                        style={{ width: `${analytics.topProductos[0] ? (p.cantidad / analytics.topProductos[0].cantidad) * 100 : 0}%` }}
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No hay datos de vendedores disponibles</p>
-              </div>
-            )}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center mb-6">
-              <Clock className="w-5 h-5 text-orange-600 mr-2" />
-              <h3 className="text-lg font-semibold text-gray-900">Tendencias de Tiempo de Entrega</h3>
+          {/* Top Clientes */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
+              <Users className="w-4 h-4 text-emerald-600" />
+              Fidelidad de Clientes
+            </h3>
+            <div className="space-y-4">
+              {analytics.topClientes.slice(0, 10).map((c: any) => (
+                <div key={c.nombre} className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">{c.nombre}</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{c.pedidos} PEDIDOS REALIZADOS</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-emerald-600">{formatCurrency(c.total)}</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase">TOTAL INVERTIDO</p>
+                  </div>
+                </div>
+              ))}
             </div>
-
-            {datosGraficoTiempos.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={datosGraficoTiempos}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="hora" />
-                  <YAxis label={{ value: 'Minutos', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="promedio"
-                    stroke="#F59E0B"
-                    strokeWidth={2}
-                    name="Promedio"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="maximo"
-                    stroke="#EF4444"
-                    strokeWidth={1}
-                    strokeDasharray="5 5"
-                    name="Máximo"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="text-center py-8">
-                <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No hay datos de tiempos disponibles</p>
-              </div>
-            )}
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-          <div className="flex items-center mb-6">
-            <TrendingUp className="w-5 h-5 text-green-600 mr-2" />
-            <h3 className="text-lg font-semibold text-gray-900">Top 10 Productos Más Vendidos</h3>
-          </div>
+      </div>
+    </div>
+  );
+}
 
-          {productosTopFiltrados.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Producto
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Categoría
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Unidades Vendidas
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Ingresos
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Pedidos
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {productosTopFiltrados.map((producto, index) => (
-                    <tr key={producto.producto_id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-                            <span className="text-sm font-bold text-blue-600">{index + 1}</span>
-                          </div>
-                          <span className="text-sm font-medium text-gray-900">{producto.producto_nombre}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {producto.categoria_nombre || 'Sin categoría'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
-                        {producto.unidades_vendidas}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
-                        {formatCurrency(producto.ingresos_totales)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                        {producto.cantidad_pedidos}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No hay datos de productos disponibles</p>
-            </div>
-          )}
-        </div>
+function AnalyticCard({ title, value, icon, subtitle }: { title: string, value: string, icon: any, subtitle: string }) {
+  return (
+    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+      <div className="flex justify-between items-start mb-4">
+        <div className="p-3 bg-gray-50 rounded-2xl">{icon}</div>
+      </div>
+      <div>
+        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">{title}</h3>
+        <p className="text-2xl font-black text-gray-900">{value}</p>
+        <p className="text-xs font-bold text-gray-400 mt-2 flex items-center gap-1">
+          {subtitle}
+        </p>
       </div>
     </div>
   );

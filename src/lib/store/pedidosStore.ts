@@ -121,14 +121,14 @@ interface PedidosState {
   showDeleted: boolean;
   isLoading: boolean;
   isSubmitting: boolean;
-  
+
   // Pedido actions
   fetchPedidos: (includeDeleted?: boolean) => Promise<void>;
   fetchPedidosActivos: () => Promise<void>;
   fetchPedidosFinalizados: () => Promise<void>;
   fetchPedidosConDetalles: () => Promise<void>;
   fetchPedidoById: (id: number) => Promise<void>;
-  fetchPedidoDetalles: (id: number) => Promise<void>;
+  fetchPedidoDetalles: (id: number) => Promise<Pedido | null>;
   fetchEstadosPedido: () => Promise<void>;
   fetchTiposEntrega: () => Promise<void>;
   fetchZonasEntrega: (includeInactive?: boolean) => Promise<void>;
@@ -145,15 +145,15 @@ interface PedidosState {
   softDeletePedido: (id: number) => Promise<void>;
   restorePedido: (id: number) => Promise<void>;
   deletePedido: (id: number) => Promise<void>;
-  
+
   // Zonas de entrega actions
   createZona: (zonaData: Omit<ZonaEntrega, 'id'>) => Promise<ZonaEntrega>;
   updateZona: (id: number, zonaData: Partial<ZonaEntrega>) => Promise<ZonaEntrega>;
-  
+
   // Utility actions
   clearPedidoActual: () => void;
   setShowDeleted: (show: boolean) => void;
-  
+
   // Realtime subscription
   subscribeToPedidosChanges: () => any;
 }
@@ -198,14 +198,14 @@ function procesarCalculosFinancieros(items: any[], preciosReales: Record<number,
   const detallesProcesados = items.map((item) => {
     // 1. SANACIÓN BLINDADA: Usar Precio Fresco de BD si existe
     // Si no existe (ej: producto borrado), usar fallback del item
-    const precioBaseReal = preciosReales[item.producto_id] !== undefined 
-      ? Number(preciosReales[item.producto_id]) 
+    const precioBaseReal = preciosReales[item.producto_id] !== undefined
+      ? Number(preciosReales[item.producto_id])
       : Number(item.precio_unitario);
 
     // 2. EXTRAS
     let salsas = item.salsas_seleccionadas;
     if (typeof salsas === 'string') { try { salsas = JSON.parse(salsas); } catch (e) { salsas = []; } }
-    
+
     const costoExtras = Array.isArray(salsas)
       ? salsas.reduce((sum: number, s: any) => sum + (Number(s.precio) || 0), 0)
       : 0;
@@ -354,7 +354,7 @@ export const usePedidosStore = create<PedidosState>((set, get) => ({
     }
   },
 
-fetchPedidoDetalles: async (id: number) => {
+  fetchPedidoDetalles: async (id: number) => {
     if (!id) return null;
     set({ isLoading: true });
     try {
@@ -489,7 +489,7 @@ fetchPedidoDetalles: async (id: number) => {
         .is('fecha_entregado', null)
         .is('deleted_at', null)
         .order('insert_date', { ascending: true });
-      
+
       if (error) throw error;
       set({ pedidosParaEntrega: data || [] });
     } catch (error: any) {
@@ -501,15 +501,15 @@ fetchPedidoDetalles: async (id: number) => {
   },
 
 
-fetchPedidosByDateRange: async (fechaInicio: string, fechaFin: string) => {
-     set({ isLoading: true });
-     try {
-       // NOTA: fechaInicio y fechaFin ya deben venir con la hora exacta (ISO string)
-       // desde el componente para manejar la zona horaria correctamente.
-       
-       const { data, error } = await supabase
-         .from('pedidos_vista')
-         .select(`
+  fetchPedidosByDateRange: async (fechaInicio: string, fechaFin: string) => {
+    set({ isLoading: true });
+    try {
+      // NOTA: fechaInicio y fechaFin ya deben venir con la hora exacta (ISO string)
+      // desde el componente para manejar la zona horaria correctamente.
+
+      const { data, error } = await supabase
+        .from('pedidos_vista')
+        .select(`
            *,
            detalles:detalles_pedido(
              *,
@@ -517,23 +517,23 @@ fetchPedidosByDateRange: async (fechaInicio: string, fechaFin: string) => {
            ),
            pagos:pagos(*)
          `)
-         .gte('insert_date', fechaInicio)
-         .lte('insert_date', fechaFin)
-         .is('deleted_at', null)
-         .order('insert_date', { ascending: false });
- 
-       if (error) throw error;
-       
-       set({ pedidos: data || [] });
-       return data || [];
-     } catch (error: any) {
-       console.error('Error fetching pedidos by date range:', error);
-       toast.error('Error al cargar transacciones');
-       return [];
-     } finally {
-       set({ isLoading: false });
-     }
-   },
+        .gte('insert_date', fechaInicio)
+        .lte('insert_date', fechaFin)
+        .is('deleted_at', null)
+        .order('insert_date', { ascending: false });
+
+      if (error) throw error;
+
+      set({ pedidos: data || [] });
+      return data || [];
+    } catch (error: any) {
+      console.error('Error fetching pedidos by date range:', error);
+      toast.error('Error al cargar transacciones');
+      return [];
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 
   updatePedidoTimestamp: async (pedidoId, campo) => {
     try {
@@ -543,7 +543,7 @@ fetchPedidosByDateRange: async (fechaInicio: string, fechaFin: string) => {
         .eq('id', pedidoId);
 
       if (error) throw error;
-      
+
       toast.success('Estado de entrega actualizado');
       get().fetchPedidosParaEntrega();
     } catch (error: any) {
@@ -567,7 +567,7 @@ fetchPedidosByDateRange: async (fechaInicio: string, fechaFin: string) => {
         .eq('estado_origen_id', currentEstadoId);
 
       if (error) throw error;
-      
+
       const validStates = data
         ?.map(item => item.estado_destino)
         .filter(Boolean) as EstadoPedido[];
@@ -658,233 +658,233 @@ fetchPedidosByDateRange: async (fechaInicio: string, fechaFin: string) => {
     }
   },
 
-createPedido: async (pedido, detalles, estado) => {
-  set({ isSubmitting: true });
-  try {
-    console.log('[Pedido] Iniciando creación de pedido:', {
-      cliente_id: pedido.cliente_id,
-      tipo_entrega_id: pedido.tipo_entrega_id,
-      total_items: detalles.length,
-      estado_destino: estado
-    });
+  createPedido: async (pedido, detalles, estado) => {
+    set({ isSubmitting: true });
+    try {
+      console.log('[Pedido] Iniciando creación de pedido:', {
+        cliente_id: pedido.cliente_id,
+        tipo_entrega_id: pedido.tipo_entrega_id,
+        total_items: detalles.length,
+        estado_destino: estado
+      });
 
-    // Validate that customer exists
-    if (pedido.cliente_id) {
-      const { data: clienteExiste, error: clienteError } = await supabase
-        .from('clientes')
+      // Validate that customer exists
+      if (pedido.cliente_id) {
+        const { data: clienteExiste, error: clienteError } = await supabase
+          .from('clientes')
+          .select('id')
+          .eq('id', pedido.cliente_id)
+          .maybeSingle();
+
+        if (clienteError || !clienteExiste) {
+          console.error('[Pedido] Error: Cliente no existe', pedido.cliente_id);
+          throw new Error('El cliente seleccionado ya no existe. Por favor, selecciona otro cliente.');
+        }
+        console.log('[Pedido] ✓ Cliente validado');
+      }
+
+      const { data: estadoData, error: estadoError } = await supabase
+        .from('pedido_estados')
         .select('id')
-        .eq('id', pedido.cliente_id)
-        .maybeSingle();
+        .eq('nombre', estado === 'completado' ? 'Completado' : 'Pendiente')
+        .single();
 
-      if (clienteError || !clienteExiste) {
-        console.error('[Pedido] Error: Cliente no existe', pedido.cliente_id);
-        throw new Error('El cliente seleccionado ya no existe. Por favor, selecciona otro cliente.');
+      if (estadoError) {
+        console.error('[Pedido] Error al obtener estado:', estadoError);
+        throw estadoError;
       }
-      console.log('[Pedido] ✓ Cliente validado');
-    }
+      console.log('[Pedido] ✓ Estado obtenido:', estadoData.id);
 
-    const { data: estadoData, error: estadoError } = await supabase
-      .from('pedido_estados')
-      .select('id')
-      .eq('nombre', estado === 'completado' ? 'Completado' : 'Pendiente')
-      .single();
+      // === PASO 1: LIMPIEZA DEL OBJETO ===
+      // Quitamos detalles, nombres extra y el objeto cliente completo (si viene)
+      const {
+        detalles: _,
+        tipo_entrega_nombre: __,
+        cliente: ___,
+        ...pedidoSinDetalles
+      } = pedido;
 
-    if (estadoError) {
-      console.error('[Pedido] Error al obtener estado:', estadoError);
-      throw estadoError;
-    }
-    console.log('[Pedido] ✓ Estado obtenido:', estadoData.id);
+      // === PASO 2: OBTENER PRECIOS REALES (FRESCOS) DE BD ===
+      const idsProductos = detalles.map(d => d.producto_id);
+      console.log('[Pedido] Obteniendo precios frescos para productos:', idsProductos);
 
-// === PASO 1: LIMPIEZA DEL OBJETO ===
-// Quitamos detalles, nombres extra y el objeto cliente completo (si viene)
-const {
-  detalles: _,
-  tipo_entrega_nombre: __,
-  cliente: ___,
-  ...pedidoSinDetalles
-} = pedido;
+      const { data: productosData, error: preciosError } = await supabase
+        .from('productos')
+        .select('id, precio, precio_regular, precio_descuento')
+        .in('id', idsProductos);
 
-// === PASO 2: OBTENER PRECIOS REALES (FRESCOS) DE BD ===
-const idsProductos = detalles.map(d => d.producto_id);
-console.log('[Pedido] Obteniendo precios frescos para productos:', idsProductos);
+      if (preciosError) {
+        console.error('[Pedido] Error al obtener precios:', preciosError);
+        throw preciosError;
+      }
 
-const { data: productosData, error: preciosError } = await supabase
-  .from('productos')
-  .select('id, precio, precio_regular, precio_descuento')
-  .in('id', idsProductos);
+      // Crear mapa de acceso rápido con precio efectivo: { 568: 79, ... }
+      // Prioridad: precio_descuento > precio_regular > precio
+      const mapaPrecios: Record<number, number> = {};
+      productosData?.forEach(p => {
+        const precioEfectivo = (p.precio_descuento && Number(p.precio_descuento) > 0)
+          ? Number(p.precio_descuento)
+          : (p.precio_regular && Number(p.precio_regular) > 0)
+            ? Number(p.precio_regular)
+            : Number(p.precio || 0);
 
-if (preciosError) {
-  console.error('[Pedido] Error al obtener precios:', preciosError);
-  throw preciosError;
-}
+        mapaPrecios[p.id] = precioEfectivo;
+        console.log(`[Pedido] Producto ${p.id}: precio=${p.precio}, regular=${p.precio_regular}, descuento=${p.precio_descuento} => efectivo=${precioEfectivo}`);
+      });
+      console.log('[Pedido] Mapa de precios frescos:', mapaPrecios);
 
-// Crear mapa de acceso rápido con precio efectivo: { 568: 79, ... }
-// Prioridad: precio_descuento > precio_regular > precio
-const mapaPrecios: Record<number, number> = {};
-productosData?.forEach(p => {
-  const precioEfectivo = (p.precio_descuento && Number(p.precio_descuento) > 0)
-    ? Number(p.precio_descuento)
-    : (p.precio_regular && Number(p.precio_regular) > 0)
-      ? Number(p.precio_regular)
-      : Number(p.precio || 0);
+      // === PASO 3: PROCESAMIENTO FINANCIERO CENTRALIZADO ===
+      // Usamos la función auxiliar que garantiza cálculos correctos con precios frescos
+      const { detallesProcesados, granTotal } = procesarCalculosFinancieros(detalles, mapaPrecios);
 
-  mapaPrecios[p.id] = precioEfectivo;
-  console.log(`[Pedido] Producto ${p.id}: precio=${p.precio}, regular=${p.precio_regular}, descuento=${p.precio_descuento} => efectivo=${precioEfectivo}`);
-});
-console.log('[Pedido] Mapa de precios frescos:', mapaPrecios);
+      // Calcular el total final con descuentos, impuestos y envío
+      const descuentos = pedido.descuentos || 0;
+      const impuestos = pedido.impuestos || 0;
+      const costoEnvio = pedido.costo_envio || 0;
+      const totalFinal = granTotal - descuentos + impuestos + costoEnvio;
 
-// === PASO 3: PROCESAMIENTO FINANCIERO CENTRALIZADO ===
-// Usamos la función auxiliar que garantiza cálculos correctos con precios frescos
-const { detallesProcesados, granTotal } = procesarCalculosFinancieros(detalles, mapaPrecios);
+      console.log(`[Pedido] 💰 Totales: Subtotal=${granTotal} - Desc=${descuentos} + Imp=${impuestos} + Envío=${costoEnvio} = Total=${totalFinal}`);
 
-// Calcular el total final con descuentos, impuestos y envío
-const descuentos = pedido.descuentos || 0;
-const impuestos = pedido.impuestos || 0;
-const costoEnvio = pedido.costo_envio || 0;
-const totalFinal = granTotal - descuentos + impuestos + costoEnvio;
+      // === PASO 3: CONSTRUIR PAYLOAD PARA BD ===
+      const pedidoData = {
+        ...pedidoSinDetalles,
+        subtotal: granTotal,
+        descuentos: descuentos,
+        impuestos: impuestos,
+        costo_envio: costoEnvio,
+        total: totalFinal,
+        estado,
+        estado_id: estadoData.id
+      };
 
-console.log(`[Pedido] 💰 Totales: Subtotal=${granTotal} - Desc=${descuentos} + Imp=${impuestos} + Envío=${costoEnvio} = Total=${totalFinal}`);
+      console.log('[Pedido] Datos a insertar:', {
+        ...pedidoData,
+        detalles_count: detalles.length
+      });
 
-// === PASO 3: CONSTRUIR PAYLOAD PARA BD ===
-const pedidoData = {
-  ...pedidoSinDetalles,
-  subtotal: granTotal,
-  descuentos: descuentos,
-  impuestos: impuestos,
-  costo_envio: costoEnvio,
-  total: totalFinal,
-  estado,
-  estado_id: estadoData.id
-};
+      const { data: nuevoPedido, error: pedidoError } = await supabase
+        .from('pedidos')
+        .insert([pedidoData])
+        .select()
+        .single();
 
-    console.log('[Pedido] Datos a insertar:', {
-      ...pedidoData,
-      detalles_count: detalles.length
-    });
+      if (pedidoError) {
+        console.error('[Pedido] Error al insertar pedido:', pedidoError);
+        throw pedidoError;
+      }
+      console.log('[Pedido] ✓ Pedido creado exitosamente:', nuevoPedido.id);
 
-    const { data: nuevoPedido, error: pedidoError } = await supabase
-      .from('pedidos')
-      .insert([pedidoData])
-      .select()
-      .single();
+      // === PASO 4: INSERTAR DETALLES PROCESADOS ===
+      if (detallesProcesados.length > 0) {
+        console.log(`[Pedido] Insertando ${detallesProcesados.length} detalles procesados...`);
 
-    if (pedidoError) {
-      console.error('[Pedido] Error al insertar pedido:', pedidoError);
-      throw pedidoError;
-    }
-    console.log('[Pedido] ✓ Pedido creado exitosamente:', nuevoPedido.id);
+        // Agregar el pedido_id a cada detalle procesado
+        const detallesConPedidoId = detallesProcesados.map(detalle => ({
+          pedido_id: nuevoPedido.id,
+          ...detalle
+        }));
 
-  // === PASO 4: INSERTAR DETALLES PROCESADOS ===
-    if (detallesProcesados.length > 0) {
-      console.log(`[Pedido] Insertando ${detallesProcesados.length} detalles procesados...`);
+        console.log('[Pedido] IDs de productos a insertar:', detallesConPedidoId.map(d => d.producto_id));
 
-      // Agregar el pedido_id a cada detalle procesado
-      const detallesConPedidoId = detallesProcesados.map(detalle => ({
-        pedido_id: nuevoPedido.id,
-        ...detalle
-      }));
+        const { error: detallesError } = await supabase
+          .from('detalles_pedido')
+          .insert(detallesConPedidoId);
 
-      console.log('[Pedido] IDs de productos a insertar:', detallesConPedidoId.map(d => d.producto_id));
+        if (detallesError) {
+          console.error('[Pedido] Error al insertar detalles:', detallesError);
+          throw detallesError;
+        }
+        console.log('[Pedido] ✓ Detalles insertados correctamente');
+      }
 
-      const { error: detallesError } = await supabase
+
+      if (estado === 'completado') {
+        console.log('[Pedido] Finalizando pedido...');
+        await get().finalizarPedido(nuevoPedido.id);
+        console.log('[Pedido] ✓ Pedido finalizado');
+      }
+
+      console.log('[Pedido] Generando ticket...');
+      const ticket = await get().generarTicket(nuevoPedido.id);
+      console.log('[Pedido] ✓ Ticket generado');
+
+      // Recargar el pedido completo desde la base de datos con todos los detalles
+      console.log('[Pedido] Recargando pedido completo...');
+      const { data: pedidoCompleto, error: fetchError } = await supabase
+        .from('pedidos_vista')
+        .select('*')
+        .eq('id', nuevoPedido.id)
+        .single();
+
+      if (fetchError) {
+        console.error('[Pedido] Error al recargar pedido:', fetchError);
+        throw fetchError;
+      }
+
+      // Obtener los detalles con los productos completos
+      const { data: detallesCompletos, error: detallesError } = await supabase
         .from('detalles_pedido')
-        .insert(detallesConPedidoId);
-
-      if (detallesError) {
-        console.error('[Pedido] Error al insertar detalles:', detallesError);
-        throw detallesError;
-      }
-      console.log('[Pedido] ✓ Detalles insertados correctamente');
-    }
-
-    
-    if (estado === 'completado') {
-      console.log('[Pedido] Finalizando pedido...');
-      await get().finalizarPedido(nuevoPedido.id);
-      console.log('[Pedido] ✓ Pedido finalizado');
-    }
-
-    console.log('[Pedido] Generando ticket...');
-    const ticket = await get().generarTicket(nuevoPedido.id);
-    console.log('[Pedido] ✓ Ticket generado');
-
-    // Recargar el pedido completo desde la base de datos con todos los detalles
-    console.log('[Pedido] Recargando pedido completo...');
-    const { data: pedidoCompleto, error: fetchError } = await supabase
-      .from('pedidos_vista')
-      .select('*')
-      .eq('id', nuevoPedido.id)
-      .single();
-
-    if (fetchError) {
-      console.error('[Pedido] Error al recargar pedido:', fetchError);
-      throw fetchError;
-    }
-
-    // Obtener los detalles con los productos completos
-    const { data: detallesCompletos, error: detallesError } = await supabase
-      .from('detalles_pedido')
-      .select(`
+        .select(`
         *,
         producto:productos(nombre, codigo, imagenes_urls)
       `)
-      .eq('pedido_id', nuevoPedido.id)
-      .is('deleted_at', null);
+        .eq('pedido_id', nuevoPedido.id)
+        .is('deleted_at', null);
 
-    if (detallesError) {
-      console.error('[Pedido] Error al obtener detalles completos:', detallesError);
-      throw detallesError;
+      if (detallesError) {
+        console.error('[Pedido] Error al obtener detalles completos:', detallesError);
+        throw detallesError;
+      }
+
+      const pedidoConDetalles = {
+        ...pedidoCompleto,
+        detalles: detallesCompletos || [],
+        ticket
+      };
+
+      console.log('[Pedido] ✓ Pedido completo recargado:', {
+        id: pedidoConDetalles.id,
+        total: pedidoConDetalles.total,
+        items: detallesCompletos?.length
+      });
+
+      console.log('[Pedido] Actualizando lista de pedidos activos...');
+      await get().fetchPedidosActivos();
+      console.log('[Pedido] ✓ Lista actualizada');
+
+      const mensaje = estado === 'completado'
+        ? 'Venta finalizada exitosamente'
+        : 'Pedido guardado exitosamente';
+
+      console.log('[Pedido] ✓✓✓ PROCESO COMPLETADO EXITOSAMENTE ✓✓✓');
+      toast.success(mensaje);
+
+      return { pedido: pedidoConDetalles, ticket };
+    } catch (error: any) {
+      console.error('[Pedido] ❌ ERROR EN CREACIÓN DE PEDIDO:', {
+        error: error,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code
+      });
+
+      // Mensaje de error más específico según el tipo
+      if (error?.code === '23502') {
+        toast.error('Error de base de datos: campo obligatorio faltante');
+      } else if (error?.code === '23503') {
+        toast.error('Error de referencia: registro relacionado no existe');
+      } else if (error?.message?.includes('Cliente')) {
+        toast.error(error.message);
+      } else {
+        toast.error('Error al crear pedido. Ver consola para detalles.');
+      }
+
+      throw error;
+    } finally {
+      set({ isSubmitting: false });
     }
-
-    const pedidoConDetalles = {
-      ...pedidoCompleto,
-      detalles: detallesCompletos || [],
-      ticket
-    };
-
-    console.log('[Pedido] ✓ Pedido completo recargado:', {
-      id: pedidoConDetalles.id,
-      total: pedidoConDetalles.total,
-      items: detallesCompletos?.length
-    });
-
-    console.log('[Pedido] Actualizando lista de pedidos activos...');
-    await get().fetchPedidosActivos();
-    console.log('[Pedido] ✓ Lista actualizada');
-
-    const mensaje = estado === 'completado'
-      ? 'Venta finalizada exitosamente'
-      : 'Pedido guardado exitosamente';
-
-    console.log('[Pedido] ✓✓✓ PROCESO COMPLETADO EXITOSAMENTE ✓✓✓');
-    toast.success(mensaje);
-
-    return { pedido: pedidoConDetalles, ticket };
-  } catch (error: any) {
-    console.error('[Pedido] ❌ ERROR EN CREACIÓN DE PEDIDO:', {
-      error: error,
-      message: error?.message,
-      details: error?.details,
-      hint: error?.hint,
-      code: error?.code
-    });
-
-    // Mensaje de error más específico según el tipo
-    if (error?.code === '23502') {
-      toast.error('Error de base de datos: campo obligatorio faltante');
-    } else if (error?.code === '23503') {
-      toast.error('Error de referencia: registro relacionado no existe');
-    } else if (error?.message?.includes('Cliente')) {
-      toast.error(error.message);
-    } else {
-      toast.error('Error al crear pedido. Ver consola para detalles.');
-    }
-
-    throw error;
-  } finally {
-    set({ isSubmitting: false });
-  }
-},
+  },
 
   updatePedidoCompleto: async (pedidoId, datosPedido, nuevosDetalles) => {
     const logPrefix = `[UPDATE-PEDIDO-${pedidoId}]`;
@@ -898,7 +898,7 @@ const pedidoData = {
     console.log(`${logPrefix} Datos del pedido:`, datosPedido);
     console.log(`${'='.repeat(70)}`);
 
-try {
+    try {
       // 1. LIMPIEZA PROFUNDA (Deep Clean)
       // Borramos todo rastro anterior para evitar conflictos de duplicados y fantasmas.
       console.log(`${logPrefix} [1] Iniciando limpieza profunda del pedido...`);
@@ -973,7 +973,7 @@ try {
       console.log(`${logPrefix} [2] 🎯 IDs de productos válidos que se usarán en la query:`, idsProductos);
       console.log(`${logPrefix} [2] 🎯 IDs tipos:`, idsProductos.map(id => typeof id));
 
-      const { data: productosData, error: preciosError} = await supabase
+      const { data: productosData, error: preciosError } = await supabase
         .from('productos')
         .select('id, precio, precio_regular, precio_descuento')
         .in('id', idsProductos);
@@ -1418,7 +1418,7 @@ try {
         .eq('id', id);
 
       if (error) throw error;
-      
+
       // Refresh pedidos list
       await get().fetchPedidosActivos();
       toast.success('Pedido eliminado exitosamente');
@@ -1437,7 +1437,7 @@ try {
         .eq('id', id);
 
       if (error) throw error;
-      
+
       // Refresh pedidos list
       await get().fetchPedidosActivos();
       toast.success('Pedido restaurado exitosamente');
@@ -1456,7 +1456,7 @@ try {
         .eq('id', id);
 
       if (error) throw error;
-      
+
       // Refresh pedidos list
       await get().fetchPedidosActivos();
       toast.success('Pedido eliminado permanentemente');
@@ -1521,7 +1521,7 @@ try {
   },
 
   clearPedidoActual: () => set({ pedidoActual: null }),
-  
+
   setShowDeleted: (show: boolean) => {
     set({ showDeleted: show });
     get().fetchPedidos(show);
@@ -1538,7 +1538,7 @@ try {
           table: 'pedidos'
         },
         (payload) => {
-          
+
           // Obtener el pedido completo con sus relaciones
           supabase
             .from('pedidos_vista')
@@ -1562,7 +1562,7 @@ try {
           table: 'pedidos'
         },
         (payload) => {
-          
+
           // Obtener el pedido completo con sus relaciones
           supabase
             .from('pedidos_vista')

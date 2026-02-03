@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { usePedidosStore } from '../lib/store/pedidosStore';
 import {
   Search,
@@ -11,135 +11,75 @@ import {
 } from 'lucide-react';
 import { PedidoDetalleModal } from '../components/PedidoDetalleModal';
 import { formatCurrency, formatDate } from '../lib/utils/formatters';
-import { calculateVentasTotales } from '../lib/utils/ventasCalculations';
-import { filterPedidosByCategoria, ModoFiltroCategorias } from '../lib/utils/orderFilters';
+import { ModoFiltroCategorias } from '../lib/utils/orderFilters';
+import { useDashboardData } from '../hooks/useDashboardData';
+import { getDateRangeMexico } from '../lib/utils/time';
 
 export function Transacciones() {
-  const { 
-    pedidos, 
-    isLoading, 
-    fetchPedidosByDateRange 
-  } = usePedidosStore();
+  const { isLoading: isLoadingStore } = usePedidosStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPedidoId, setSelectedPedidoId] = useState<number | null>(null);
   const [filtroCategoria, setFiltroCategoria] = useState<ModoFiltroCategorias>('todos');
 
-  // Filtros de fecha
-  const [dateFilterType, setDateFilterType] = useState<'hoy' | 'semana' | 'mes' | 'custom'>('hoy');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // Filtros de fecha robustos usando la utilidad centralizada
+  const [dateRange, setDateRange] = useState(() => {
+    const [start, end] = getDateRangeMexico('today');
+    return { start, end, type: 'hoy' as 'hoy' | 'semana' | 'mes' | 'custom' };
+  });
 
-  // Función auxiliar para obtener la fecha local YYYY-MM-DD del navegador
-  const getLocalDateStr = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  const handleRangeChange = (type: 'hoy' | 'semana' | 'mes') => {
+    const apiTypeMap = { hoy: 'today', semana: 'week', mes: 'month' } as const;
+    const [start, end] = getDateRangeMexico(apiTypeMap[type]);
+    setDateRange({ start, end, type });
   };
 
-  // Inicializar fechas al cargar
-  useEffect(() => {
-    const todayStr = getLocalDateStr(new Date());
-    setStartDate(todayStr);
-    setEndDate(todayStr);
-  }, []);
+  // Datos analíticos centralizados
+  const { data: analytics, loading: isLoadingAnalytics } = useDashboardData(
+    dateRange.start,
+    dateRange.end,
+    {
+      filterCategoria: filtroCategoria,
+      desayunosCategoryId: 54,
+      includeCancelled: true
+    }
+  );
 
-  // Cargar datos
-  useEffect(() => {
-    const loadData = async () => {
-      const now = new Date();
-      const todayStr = getLocalDateStr(now);
-
-      let startStr = startDate || todayStr;
-      let endStr = endDate || todayStr;
-      
-      // Lógica de botones rápidos
-      if (dateFilterType === 'hoy') {
-        startStr = todayStr;
-        endStr = todayStr;
-      } else if (dateFilterType === 'semana') {
-        const weekAgo = new Date();
-        weekAgo.setDate(now.getDate() - 7);
-        startStr = getLocalDateStr(weekAgo);
-        endStr = todayStr;
-      } else if (dateFilterType === 'mes') {
-        const monthAgo = new Date();
-        monthAgo.setMonth(now.getMonth() - 1);
-        startStr = getLocalDateStr(monthAgo);
-        endStr = todayStr;
-      } else if (dateFilterType === 'custom') {
-         startStr = startDate;
-         endStr = endDate;
-      }
-
-      // Sincronizar inputs visuales
-      if (dateFilterType !== 'custom') {
-        setStartDate(startStr);
-        setEndDate(endStr);
-      }
-
-      // === CORRECCIÓN DE ZONA HORARIA (AQUÍ ESTÁ LA SOLUCIÓN) ===
-      
-      // 1. Creamos objetos Date basados en la hora LOCAL del navegador.
-      // Al pasar "T00:00:00", el navegador asume medianoche local (ej: México).
-      const localStart = new Date(`${startStr}T00:00:00`);
-      const localEnd = new Date(`${endStr}T23:59:59.999`);
-
-      // 2. Convertimos a ISO String (UTC) para la base de datos.
-      // Si son las 00:00 México, .toISOString() generará 06:00 UTC automáticamente.
-      const startISO = localStart.toISOString();
-      const endISO = localEnd.toISOString();
-      
-      console.log('Filtro Local:', startStr, 'a', endStr);
-      console.log('Filtro UTC enviado a BD:', startISO, 'a', endISO);
-      
-      await fetchPedidosByDateRange(startISO, endISO);
-    };
-    
-    loadData();
-  }, [dateFilterType, startDate, endDate, fetchPedidosByDateRange]);
-
-  // Cálculo de Métricas (usando función centralizada)
+  // Cálculo de Métricas y Filtrado por búsqueda
   const { filteredPedidos, metrics } = useMemo(() => {
-    const pedidosFiltradosPorCategoria = filterPedidosByCategoria(pedidos, filtroCategoria, 54);
+    const searchLower = searchTerm.toLowerCase();
 
-    const filtered = pedidosFiltradosPorCategoria.filter(p => {
+    const filtered = analytics.rawData.filter((p: any) => {
       const matchesSearch =
-        p.cliente_nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.cliente_nombre?.toLowerCase().includes(searchLower) ||
         p.id?.toString().includes(searchTerm);
-
-      const isValidStatus = ['Completado', 'En Reparto', 'Cancelado'].includes(p.estado_nombre || '');
-      return matchesSearch && isValidStatus;
+      return matchesSearch;
     });
 
-    // Usar función centralizada para cálculos (solo Completado + En Reparto)
-    const resultado = calculateVentasTotales(filtered, {
-      estados: ['Completado', 'En Reparto']
+    const porMetodo: Record<string, { cantidad: number; monto: number }> = {};
+
+    filtered.forEach((p: any) => {
+      if (['Completado', 'En Reparto'].includes(p.estado_nombre || '')) {
+        const metodo = p.metodo_pago || 'Otro';
+        if (!porMetodo[metodo]) porMetodo[metodo] = { cantidad: 0, monto: 0 };
+        porMetodo[metodo].cantidad++;
+        porMetodo[metodo].monto += (p.total || 0);
+      }
     });
-
-    const porMetodo = resultado.desglosePorMetodoPago.reduce((acc, item) => {
-      acc[item.metodo] = { cantidad: item.cantidad, monto: item.monto };
-      return acc;
-    }, {} as Record<string, { cantidad: number; monto: number }>);
-
-    const ticketPromedio = resultado.totalPedidos > 0
-      ? resultado.totalVentas / resultado.totalPedidos
-      : 0;
 
     return {
       filteredPedidos: filtered,
       metrics: {
-        totalVentas: resultado.totalVentas,
-        totalPedidos: resultado.totalPedidos,
+        totalVentas: analytics.totalVentas,
+        totalPedidos: analytics.totalPedidos,
         porMetodo,
-        ticketPromedio
+        ticketPromedio: analytics.ticketPromedio
       }
     };
-  }, [pedidos, searchTerm, filtroCategoria]);
+  }, [analytics, searchTerm]);
 
   const getMethodIcon = (method: string) => {
-    const m = method.toLowerCase();
+    const m = (method || '').toLowerCase();
     if (m.includes('efectivo')) return <Wallet className="w-5 h-5 text-green-600" />;
     if (m.includes('tarjeta')) return <CreditCard className="w-5 h-5 text-blue-600" />;
     if (m.includes('transferencia')) return <ArrowUpRight className="w-5 h-5 text-purple-600" />;
@@ -153,19 +93,18 @@ export function Transacciones() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-gray-800">Transacciones</h1>
-            <p className="text-xs md:text-sm text-gray-500 hidden md:block">Historial financiero</p>
+            <p className="text-xs md:text-sm text-gray-500 hidden md:block">Historial financiero unificado</p>
           </div>
-          
+
           <div className="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto overflow-x-auto">
             {(['hoy', 'semana', 'mes', 'custom'] as const).map((type) => (
               <button
                 key={type}
-                onClick={() => setDateFilterType(type)}
-                className={`flex-1 md:flex-none px-3 py-1.5 text-xs md:text-sm font-medium rounded-md whitespace-nowrap transition-all ${
-                  dateFilterType === type 
-                    ? 'bg-white text-indigo-600 shadow-sm' 
+                onClick={() => type !== 'custom' ? handleRangeChange(type as any) : setDateRange(prev => ({ ...prev, type: 'custom' }))}
+                className={`flex-1 md:flex-none px-3 py-1.5 text-xs md:text-sm font-medium rounded-md whitespace-nowrap transition-all ${dateRange.type === type
+                    ? 'bg-white text-indigo-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 {type === 'custom' ? 'Rango' : type.charAt(0).toUpperCase() + type.slice(1)}
               </button>
@@ -176,25 +115,11 @@ export function Transacciones() {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col md:flex-row gap-3 items-end md:items-center justify-between">
             <div className="flex gap-2 w-full md:w-auto bg-gray-50 p-1 rounded-lg border border-gray-200">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setDateFilterType('custom');
-                }}
-                className="bg-transparent border-none text-xs md:text-sm focus:ring-0 text-gray-600 w-full"
-              />
-              <span className="text-gray-400 text-xs self-center">-</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value);
-                  setDateFilterType('custom');
-                }}
-                className="bg-transparent border-none text-xs md:text-sm focus:ring-0 text-gray-600 w-full"
-              />
+              <div className="flex items-center gap-2 px-2 text-xs text-gray-500">
+                <span>Del: {new Date(dateRange.start).toLocaleDateString()}</span>
+                <span>-</span>
+                <span>Al: {new Date(dateRange.end).toLocaleDateString()}</span>
+              </div>
             </div>
 
             <div className="relative w-full md:w-64">
@@ -212,31 +137,28 @@ export function Transacciones() {
           <div className="flex gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full md:w-auto">
             <button
               onClick={() => setFiltroCategoria('todos')}
-              className={`flex-1 md:flex-none px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${
-                filtroCategoria === 'todos'
+              className={`flex-1 md:flex-none px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'todos'
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
-              }`}
+                }`}
             >
               Todos los Pedidos
             </button>
             <button
               onClick={() => setFiltroCategoria('solo_desayunos')}
-              className={`flex-1 md:flex-none px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${
-                filtroCategoria === 'solo_desayunos'
+              className={`flex-1 md:flex-none px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'solo_desayunos'
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
-              }`}
+                }`}
             >
               Solo Desayunos
             </button>
             <button
               onClick={() => setFiltroCategoria('excluir_desayunos')}
-              className={`flex-1 md:flex-none px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${
-                filtroCategoria === 'excluir_desayunos'
+              className={`flex-1 md:flex-none px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'excluir_desayunos'
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
-              }`}
+                }`}
             >
               Sin Desayunos (Turno Regular)
             </button>
@@ -247,7 +169,7 @@ export function Transacciones() {
       {/* --- MÉTRICAS --- */}
       <div className="flex-shrink-0 px-4 py-3 bg-gray-50 border-b border-gray-200 overflow-x-auto">
         <div className="flex flex-nowrap md:grid md:grid-cols-2 lg:grid-cols-4 gap-3 min-w-min md:min-w-0">
-          
+
           <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm relative overflow-hidden min-w-[200px] md:min-w-0 flex-shrink-0">
             <div className="absolute right-0 top-0 p-2 opacity-10">
               <TrendingUp className="w-12 h-12 text-indigo-600" />
@@ -261,7 +183,7 @@ export function Transacciones() {
             </p>
           </div>
 
-          {Object.entries(metrics.porMetodo).map(([metodo, datos]) => (
+          {Object.entries(metrics.porMetodo).map(([metodo, datos]: [string, any]) => (
             <div key={metodo} className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm min-w-[180px] md:min-w-0 flex-shrink-0">
               <div className="flex justify-between items-start mb-1">
                 <div className="p-1.5 bg-gray-50 rounded-lg">
@@ -279,11 +201,11 @@ export function Transacciones() {
               </div>
             </div>
           ))}
-          
+
           {Object.keys(metrics.porMetodo).length === 0 && (
-             <div className="bg-white p-3 rounded-xl border border-dashed border-gray-300 flex items-center justify-center text-gray-400 min-w-[200px]">
-               <span className="text-xs">Sin movimientos</span>
-             </div>
+            <div className="bg-white p-3 rounded-xl border border-dashed border-gray-300 flex items-center justify-center text-gray-400 min-w-[200px]">
+              <span className="text-xs">Sin movimientos en este rango</span>
+            </div>
           )}
         </div>
       </div>
@@ -291,7 +213,7 @@ export function Transacciones() {
       {/* --- LISTADO --- */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
         <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-          
+
           {/* Tabla Desktop */}
           <table className="w-full hidden md:table">
             <thead className="bg-gray-50 border-b">
@@ -303,108 +225,103 @@ export function Transacciones() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {isLoading ? (
+              {isLoadingAnalytics || isLoadingStore ? (
                 <tr><td colSpan={4} className="px-6 py-10 text-center text-gray-500">Cargando...</td></tr>
               ) : filteredPedidos.length === 0 ? (
                 <tr><td colSpan={4} className="px-6 py-10 text-center text-gray-500">No se encontraron transacciones.</td></tr>
               ) : (
-                filteredPedidos.map((pedido) => {
+                filteredPedidos.map((pedido: any) => {
                   let metodoTexto = pedido.metodo_pago;
-                  if (!metodoTexto && pedido.pagos && pedido.pagos.length > 0) {
-                     metodoTexto = pedido.pagos[0].metodo_pago;
-                  }
                   return (
-                  <tr key={pedido.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-gray-900">
-                          {pedido.cliente_nombre || 'Cliente Final'}
-                        </span>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs bg-gray-100 text-gray-600 px-1.5 rounded">#{pedido.id}</span>
-                          <span className="text-xs text-gray-400">
-                            • {pedido.insert_date ? formatDate(pedido.insert_date) : '-'}
+                    <tr key={pedido.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-gray-900">
+                            {pedido.cliente_nombre || 'Cliente Final'}
                           </span>
-                          {pedido.estado_nombre === 'Cancelado' && (
-                             <span className="text-xs bg-red-100 text-red-700 px-1.5 rounded font-bold">CANCELADO</span>
-                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs bg-gray-100 text-gray-600 px-1.5 rounded">#{pedido.id}</span>
+                            <span className="text-xs text-gray-400">
+                              • {pedido.insert_date ? formatDate(pedido.insert_date) : '-'}
+                            </span>
+                            {pedido.estado_nombre === 'Cancelado' && (
+                              <span className="text-xs bg-red-100 text-red-700 px-1.5 rounded font-bold">CANCELADO</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                       <div className="flex items-center gap-2">
-                         {getMethodIcon(metodoTexto || '')}
-                         <span className="text-sm text-gray-700 capitalize">
-                           {metodoTexto ? metodoTexto.replace('_', ' ') : 'Múltiple / Otros'}
-                         </span>
-                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className={`text-base font-bold ${pedido.estado_nombre === 'Cancelado' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                        {formatCurrency(pedido.total || 0)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => setSelectedPedidoId(pedido.id!)}
-                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                )})
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {getMethodIcon(metodoTexto || '')}
+                          <span className="text-sm text-gray-700 capitalize">
+                            {metodoTexto ? metodoTexto.replace('_', ' ') : 'Múltiple / Otros'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={`text-base font-bold ${pedido.estado_nombre === 'Cancelado' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                          {formatCurrency(pedido.total || 0)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => setSelectedPedidoId(pedido.id!)}
+                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
 
           {/* Lista Mobile */}
           <div className="md:hidden divide-y divide-gray-100">
-            {isLoading ? (
-                <div className="p-8 text-center text-gray-500 text-sm">Cargando...</div>
-              ) : filteredPedidos.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 text-sm">No se encontraron movimientos.</div>
-              ) : (
-                filteredPedidos.map((pedido) => {
-                  let metodoTexto = pedido.metodo_pago;
-                  if (!metodoTexto && pedido.pagos && pedido.pagos.length > 0) {
-                     metodoTexto = pedido.pagos[0].metodo_pago;
-                  }
-                  return (
-                    <div key={pedido.id} className="p-4 active:bg-gray-50" onClick={() => setSelectedPedidoId(pedido.id!)}>
-                      <div className="flex justify-between items-start mb-2">
-                         <div className="flex items-center gap-2">
-                            <div className="p-2 bg-gray-100 rounded-lg text-gray-500">
-                              {getMethodIcon(metodoTexto || '')}
-                            </div>
-                            <div>
-                               <p className="text-sm font-bold text-gray-900 line-clamp-1">
-                                 {pedido.cliente_nombre || 'Cliente Final'}
-                               </p>
-                               <p className="text-xs text-gray-500">
-                                 {pedido.insert_date ? formatDate(pedido.insert_date) : '-'}
-                               </p>
-                            </div>
-                         </div>
-                         <span className={`text-sm font-bold ${pedido.estado_nombre === 'Cancelado' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                           {formatCurrency(pedido.total || 0)}
-                         </span>
+            {isLoadingAnalytics || isLoadingStore ? (
+              <div className="p-8 text-center text-gray-500 text-sm">Cargando...</div>
+            ) : filteredPedidos.length === 0 ? (
+              <div className="p-8 text-center text-gray-500 text-sm">No se encontraron movimientos.</div>
+            ) : (
+              filteredPedidos.map((pedido: any) => {
+                let metodoTexto = pedido.metodo_pago;
+                return (
+                  <div key={pedido.id} className="p-4 active:bg-gray-50" onClick={() => setSelectedPedidoId(pedido.id!)}>
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 bg-gray-100 rounded-lg text-gray-500">
+                          {getMethodIcon(metodoTexto || '')}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900 line-clamp-1">
+                            {pedido.cliente_nombre || 'Cliente Final'}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {pedido.insert_date ? formatDate(pedido.insert_date) : '-'}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex justify-between items-center pl-11">
-                         <div className="flex gap-2">
-                            <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">#{pedido.id}</span>
-                            {pedido.estado_nombre === 'Cancelado' && (
-                               <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">CANCELADO</span>
-                            )}
-                         </div>
-                         <span className="text-xs text-indigo-600 font-medium flex items-center gap-1">
-                           Ver detalle <Eye className="w-3 h-3" />
-                         </span>
-                      </div>
+                      <span className={`text-sm font-bold ${pedido.estado_nombre === 'Cancelado' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                        {formatCurrency(pedido.total || 0)}
+                      </span>
                     </div>
-                  );
-                })
-              )
+                    <div className="flex justify-between items-center pl-11">
+                      <div className="flex gap-2">
+                        <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">#{pedido.id}</span>
+                        {pedido.estado_nombre === 'Cancelado' && (
+                          <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">CANCELADO</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-indigo-600 font-medium flex items-center gap-1">
+                        Ver detalle <Eye className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )
             }
           </div>
         </div>
@@ -414,7 +331,7 @@ export function Transacciones() {
         <PedidoDetalleModal
           isOpen={!!selectedPedidoId}
           onClose={() => setSelectedPedidoId(null)}
-          pedido={filteredPedidos.find(p => p.id === selectedPedidoId)}
+          pedido={filteredPedidos.find((p: any) => p.id === selectedPedidoId)}
         />
       )}
     </div>

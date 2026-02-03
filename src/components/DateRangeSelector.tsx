@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, ChevronDown } from 'lucide-react';
+import { useState } from 'react';
+import { Calendar } from 'lucide-react';
 import { getLocalDateStr, getMexicoDateToUTC, getEndOfDayMexico } from '../lib/utils/time';
 
 interface DateRangeSelectorProps {
@@ -17,32 +17,34 @@ export function DateRangeSelector({ onRangeChange, className = '' }: DateRangeSe
 
   const getDateRange = (option: QuickOption): [string, string] => {
     const now = new Date();
+    // Obtener la fecha "YYYY-MM-DD" que es hoy en México (restando 6h al UTC actual)
     const mexicoOffset = 6 * 60 * 60 * 1000;
-    const mxNow = new Date(now.getTime() - mexicoOffset);
+    const mxDate = new Date(now.getTime() - mexicoOffset);
 
-    let startDate = new Date(mxNow);
-    let endDate = new Date(mxNow);
+    let startDate = new Date(mxDate.getTime());
+    let endDate = new Date(mxDate.getTime());
 
     switch (option) {
       case 'hoy':
+        // Ya están inicializados a hoy
         break;
 
       case 'ayer':
-        startDate.setDate(mxNow.getDate() - 1);
-        endDate.setDate(mxNow.getDate() - 1);
+        startDate.setDate(mxDate.getDate() - 1);
+        endDate.setDate(mxDate.getDate() - 1);
         break;
 
       case 'esta_semana':
-        const dayOfWeek = mxNow.getDay();
+        const dayOfWeek = mxDate.getDay();
         const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-        startDate.setDate(mxNow.getDate() - diffToMonday);
+        startDate.setDate(mxDate.getDate() - diffToMonday);
         break;
 
       case 'semana_pasada':
-        const lastWeekStart = new Date(mxNow);
-        const dayOfWeekLast = mxNow.getDay();
-        const diffToLastMonday = dayOfWeekLast === 0 ? 13 : dayOfWeekLast + 6;
-        lastWeekStart.setDate(mxNow.getDate() - diffToLastMonday);
+        const lastWeekStart = new Date(mxDate);
+        const dayOfWeekLast = mxDate.getDay();
+        const diffToLastMonday = (dayOfWeekLast === 0 ? 6 : dayOfWeekLast - 1) + 7;
+        lastWeekStart.setDate(mxDate.getDate() - diffToLastMonday);
         const lastWeekEnd = new Date(lastWeekStart);
         lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
         startDate = lastWeekStart;
@@ -54,22 +56,22 @@ export function DateRangeSelector({ onRangeChange, className = '' }: DateRangeSe
         break;
 
       case 'mes_pasado':
-        const lastMonth = new Date(mxNow);
-        lastMonth.setMonth(mxNow.getMonth() - 1);
+        const lastMonth = new Date(mxDate);
+        lastMonth.setMonth(mxDate.getMonth() - 1);
         startDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1);
         endDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0);
         break;
 
       case 'ultimos_7':
-        startDate.setDate(mxNow.getDate() - 6);
+        startDate.setDate(mxDate.getDate() - 6);
         break;
 
       case 'ultimos_30':
-        startDate.setDate(mxNow.getDate() - 29);
+        startDate.setDate(mxDate.getDate() - 29);
         break;
 
       case 'ultimos_90':
-        startDate.setDate(mxNow.getDate() - 89);
+        startDate.setDate(mxDate.getDate() - 89);
         break;
 
       case 'personalizado':
@@ -80,7 +82,7 @@ export function DateRangeSelector({ onRangeChange, className = '' }: DateRangeSe
     const endDateStr = endDate.toISOString().split('T')[0];
 
     const startUTC = getMexicoDateToUTC(startDateStr);
-    const endUTC = getEndOfDayMexico(new Date(endDateStr));
+    const endUTC = getEndOfDayMexico(new Date(endDateStr + 'T12:00:00'));
 
     return [startUTC, endUTC];
   };
@@ -142,11 +144,10 @@ export function DateRangeSelector({ onRangeChange, className = '' }: DateRangeSe
             <button
               key={option.value}
               onClick={() => handleQuickOptionChange(option.value as QuickOption)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                selectedOption === option.value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedOption === option.value
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
             >
               {option.label}
             </button>
