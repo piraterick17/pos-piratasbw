@@ -27,6 +27,7 @@ import WhatsApp from './pages/WhatsApp';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { StatsCopilot } from './components/Copilot/StatsCopilot';
 
 function App() {
   const { user, isLoading, fetchUser } = useUserStore();
@@ -192,6 +193,7 @@ function App() {
           </main>
         </div>
       </div>
+      <StatsCopilot />
       <Toaster position="top-right" />
     </>
   );
