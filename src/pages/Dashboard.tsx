@@ -46,17 +46,18 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass, bgClass }: an
   </div>
 );
 
-export function Dashboard() {
+export function Dashboard({ dateRange, hideHeader }: { dateRange?: { start: string; end: string }, hideHeader?: boolean }) {
   const { pedidos, fetchPedidosConDetalles } = usePedidosStore();
   const { productos, fetchProductos } = useProductosStore();
   const [isLoadingStore, setIsLoadingStore] = useState(true);
   const [filtroCategoria, setFiltroCategoria] = useState<ModoFiltroCategorias>('todos');
 
-  // Rango para el gráfico (últimos 7 días)
-  const [chartRange] = useState(() => {
+  // Rango para el gráfico (últimos 7 días por defecto o prop)
+  const chartRange = useMemo(() => {
+    if (dateRange) return dateRange;
     const [start, end] = getDateRangeMexico('week');
     return { start, end };
-  });
+  }, [dateRange]);
 
   // Datos analíticos centralizados
   const { data: analytics, loading: isLoadingAnalytics } = useDashboardData(
@@ -140,52 +141,53 @@ export function Dashboard() {
     <div className="h-full overflow-y-auto bg-gray-50">
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
 
-        {/* --- HEADER --- */}
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Dashboard Operativo</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Resumen en tiempo real • {new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </p>
+        {!hideHeader && (
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Dashboard Operativo</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Resumen en tiempo real • {new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Link to="/vender" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                  <ShoppingCart className="w-4 h-4" /> Nueva Venta
+                </Link>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Link to="/vender" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
-                <ShoppingCart className="w-4 h-4" /> Nueva Venta
-              </Link>
-            </div>
-          </div>
 
-          <div className="flex gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full sm:w-auto">
-            <button
-              onClick={() => setFiltroCategoria('todos')}
-              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'todos'
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-                }`}
-            >
-              Todos los Pedidos
-            </button>
-            <button
-              onClick={() => setFiltroCategoria('solo_desayunos')}
-              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'solo_desayunos'
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-                }`}
-            >
-              Solo Desayunos
-            </button>
-            <button
-              onClick={() => setFiltroCategoria('excluir_desayunos')}
-              className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'excluir_desayunos'
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-                }`}
-            >
-              Sin Desayunos (Turno Regular)
-            </button>
+            <div className="flex gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full sm:w-auto">
+              <button
+                onClick={() => setFiltroCategoria('todos')}
+                className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'todos'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+                  }`}
+              >
+                Todos los Pedidos
+              </button>
+              <button
+                onClick={() => setFiltroCategoria('solo_desayunos')}
+                className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'solo_desayunos'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+                  }`}
+              >
+                Solo Desayunos
+              </button>
+              <button
+                onClick={() => setFiltroCategoria('excluir_desayunos')}
+                className={`flex-1 sm:flex-none px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all ${filtroCategoria === 'excluir_desayunos'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+                  }`}
+              >
+                Sin Desayunos (Turno Regular)
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* --- GRID DE KPIs PRINCIPALES --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

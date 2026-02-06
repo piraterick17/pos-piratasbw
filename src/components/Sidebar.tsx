@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Home,
+  LayoutDashboard,
   ShoppingCart,
   Package,
   Users,
@@ -36,7 +36,7 @@ interface SidebarProps {
 
 // Mapa de iconos actualizado
 const iconMap: Record<string, React.FC<{ className?: string }>> = {
-  'dashboard': Home,             // <--- Dashboard al inicio
+  'dashboard': LayoutDashboard,             // <--- Dashboard al inicio
   'vender': ShoppingCart,
   'cocina': ChefHat,
   'pedidos': Package,
@@ -63,7 +63,7 @@ const iconMap: Record<string, React.FC<{ className?: string }>> = {
 export function Sidebar({ isOpen, onClose, logoSrc }: SidebarProps) {
   const { user } = useUserStore();
   const { permisos, isLoading } = usePermissions();
-  
+
   // Hooks para navegación SPA (Single Page Application)
   const navigate = useNavigate();
   const location = useLocation();
@@ -88,10 +88,10 @@ export function Sidebar({ isOpen, onClose, logoSrc }: SidebarProps) {
   const isActive = (routeKey: string) => {
     // Obtenemos la ruta actual sin la barra inicial (ej: "vender")
     const currentPath = location.pathname.slice(1);
-    
+
     // CASO ESPECIAL: Si la ruta está vacía (""), es el Dashboard por defecto
     if (currentPath === '' && routeKey === 'dashboard') return true;
-    
+
     // Comparación normal (ej: "vender" === "vender")
     // Usamos startsWith para que sub-rutas (ej: /pedidos/123) mantengan activo el padre
     return currentPath.startsWith(routeKey);
@@ -101,17 +101,15 @@ export function Sidebar({ isOpen, onClose, logoSrc }: SidebarProps) {
     <>
       {/* Overlay para móvil */}
       <div
-        className={`fixed inset-0 bg-black bg-opacity-50 z-30 transition-opacity lg:hidden ${
-          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
+        className={`fixed inset-0 bg-black bg-opacity-50 z-30 transition-opacity lg:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
         onClick={onClose}
       ></div>
 
       {/* Sidebar Container */}
       <div
-        className={`fixed top-0 left-0 h-full bg-boneWhite bg-bone-pattern z-40 transform transition-all duration-300 ease-in-out flex flex-col ${
-          isOpen ? 'translate-x-0 w-64' : '-translate-x-full w-0'
-        } lg:relative lg:translate-x-0 ${isOpen ? 'lg:w-64' : 'lg:w-16'} flex-shrink-0 overflow-hidden shadow-xl lg:shadow-none`}
+        className={`fixed top-0 left-0 h-full bg-boneWhite bg-bone-pattern z-40 transform transition-all duration-300 ease-in-out flex flex-col ${isOpen ? 'translate-x-0 w-64' : '-translate-x-full w-0'
+          } lg:relative lg:translate-x-0 ${isOpen ? 'lg:w-64' : 'lg:w-16'} flex-shrink-0 overflow-hidden shadow-xl lg:shadow-none`}
       >
         {/* Header del Sidebar (Logo) */}
         <div className="p-3 sm:p-4 flex justify-between items-center lg:justify-center flex-shrink-0 border-b border-gray-200">
@@ -124,7 +122,7 @@ export function Sidebar({ isOpen, onClose, logoSrc }: SidebarProps) {
                 onClick={() => handleNavigate('/')}
               />
             ) : (
-              <div 
+              <div
                 className="w-10 h-10 sm:w-12 sm:h-12 mb-2 bg-pirateRed rounded-full flex items-center justify-center cursor-pointer"
                 onClick={() => handleNavigate('/')}
               >
@@ -159,13 +157,11 @@ export function Sidebar({ isOpen, onClose, logoSrc }: SidebarProps) {
                   <li key={link.key}>
                     <button
                       onClick={() => handleNavigate(link.path)}
-                      className={`w-full flex items-center px-2 sm:px-4 py-2 sm:py-3 text-left transition-all rounded-lg mx-auto ${
-                        !isOpen ? 'lg:justify-center lg:px-2' : ''
-                      } ${
-                        active 
-                          ? 'bg-pirateRed text-white shadow-md' 
+                      className={`w-full flex items-center px-2 sm:px-4 py-2 sm:py-3 text-left transition-all rounded-lg mx-auto ${!isOpen ? 'lg:justify-center lg:px-2' : ''
+                        } ${active
+                          ? 'bg-pirateRed text-white shadow-md'
                           : 'text-pirateRed hover:bg-pirateRed hover:bg-opacity-10 hover:text-pirateRedDark'
-                      }`}
+                        }`}
                       title={!isOpen ? link.label : ''} // Tooltip nativo cuando está colapsado
                     >
                       <link.icon className={`w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 ${isOpen ? 'mr-3' : ''} ${active ? 'text-white' : ''}`} />

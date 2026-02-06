@@ -3,13 +3,11 @@ import {
     ShoppingCart,
     X,
     User,
-    Truck,
     Home,
     Package,
     Minus,
     Plus,
     Edit,
-    FileText,
     RotateCcw,
     Save,
     DollarSign,
@@ -105,9 +103,9 @@ export const PedidoActivo = ({
 
     return (
         <div className="bg-white lg:rounded-2xl rounded-t-3xl shadow-xl lg:border border-gray-100 flex flex-col h-full overflow-hidden transition-all duration-300">
-            <div className={`p-3.5 sm:p-5 border-b border-gray-200/20 flex justify-between items-center flex-shrink-0 transition-all duration-700 ${editingOrderId
-                    ? 'bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 shadow-[0_4px_20px_rgba(245,158,11,0.3)]'
-                    : 'bg-gradient-to-br from-pirateRed via-pirateRed to-pirateRedDark shadow-[0_4px_20px_rgba(184,28,28,0.3)]'
+            <div className={`p-3 md:p-5 border-b border-gray-200/20 flex justify-between items-center flex-shrink-0 transition-all duration-700 ${editingOrderId
+                ? 'bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 shadow-[0_4px_20px_rgba(245,158,11,0.3)]'
+                : 'bg-gradient-to-br from-pirateRed via-pirateRed to-pirateRedDark shadow-[0_4px_20px_rgba(184,28,28,0.3)]'
                 }`}>
                 <div className="flex flex-col">
                     <div className="flex items-center gap-2">
@@ -150,18 +148,18 @@ export const PedidoActivo = ({
             <div className="flex-1 flex flex-col overflow-hidden min-h-0">
                 <div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
                     {/* Cliente Info */}
-                    <div className="p-3 sm:p-4 border-b bg-gray-50/50">
+                    <div className="p-3 border-b bg-gray-50/50">
                         <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center min-w-0 flex-1">
-                                <div className="w-10 h-10 bg-white rounded-xl border border-gray-200 flex items-center justify-center flex-shrink-0 mr-3 shadow-sm">
-                                    <User className="w-5 h-5 text-gray-400" />
+                                <div className="w-8 h-8 md:w-10 md:h-10 bg-white rounded-lg md:rounded-xl border border-gray-200 flex items-center justify-center flex-shrink-0 mr-3 shadow-sm">
+                                    <User className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="text-xs font-black text-gray-900 truncate">
+                                    <p className="text-[11px] md:text-xs font-black text-gray-900 truncate">
                                         {clienteSeleccionado ? clienteSeleccionado.nombre : 'Público General'}
                                     </p>
                                     {clienteSeleccionado && (
-                                        <p className="text-[10px] font-medium text-gray-500">
+                                        <p className="text-[9px] md:text-[10px] font-medium text-gray-500">
                                             {clienteSeleccionado.telefono || 'Sin registro'}
                                         </p>
                                     )}
@@ -169,26 +167,22 @@ export const PedidoActivo = ({
                             </div>
                             <button
                                 onClick={onOpenClienteSelector}
-                                className="text-[10px] font-black bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-all duration-300 border border-blue-100 flex-shrink-0"
+                                className="text-[9px] md:text-[10px] font-black bg-blue-50 text-blue-600 px-2.5 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-all duration-300 border border-blue-100 flex-shrink-0"
                             >
                                 {clienteSeleccionado ? 'Cambiar' : 'Asignar'}
                             </button>
                         </div>
                     </div>
 
-                    <div className="p-2.5 sm:p-3 border-b bg-gray-50">
-                        <label className="text-xs font-medium text-gray-700 flex items-center mb-2">
-                            <Truck className="w-3 h-3 mr-1" />
-                            Tipo de Entrega
-                        </label>
-                        <div className="grid grid-cols-3 gap-1.5">
+                    <div className="p-2.5 border-b bg-gray-50">
+                        <div className="grid grid-cols-4 gap-1.5">
                             {tiposEntrega.map((tipo) => (
                                 <button
                                     key={tipo.id}
                                     onClick={() => setTipoEntrega(tipo.id)}
-                                    className={`p-1.5 border rounded text-[10px] text-center transition-colors ${tipoEntregaId === tipo.id
-                                        ? 'border-pirateRed bg-pirateRed text-white font-medium'
-                                        : 'border-gray-300 hover:border-pirateRed bg-white'
+                                    className={`p-1.5 border rounded-lg text-[10px] text-center transition-all ${tipoEntregaId === tipo.id
+                                        ? 'border-pirateRed bg-pirateRed text-white font-black shadow-sm scale-[1.02]'
+                                        : 'border-gray-200 bg-white text-gray-500 font-bold'
                                         }`}
                                 >
                                     {tipo.nombre}
@@ -254,19 +248,19 @@ export const PedidoActivo = ({
                         <div className="p-3 space-y-3">
                             {carrito.map((item) => (
                                 <div key={item.id} className="group relative flex items-center gap-3 p-3 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-pirateRed/10 transition-all duration-300">
-                                    <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-50">
+                                    <div className="w-10 h-10 md:w-12 md:h-12 bg-gray-50 rounded-lg md:rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-100">
                                         {item.imagen_url ? (
                                             <img src={item.imagen_url} alt={item.nombre} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                                         ) : (
-                                            <Package className="w-5 h-5 text-gray-300" />
+                                            <Package className="w-4 h-4 text-gray-300" />
                                         )}
                                     </div>
-
                                     <div className="flex-1 min-w-0">
-                                        <h4 className="text-xs font-bold text-gray-900 truncate leading-tight mb-0.5">{item.nombre}</h4>
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-[10px] font-medium text-gray-400">{formatCurrency(item.precio)}</p>
-                                            <p className="text-xs font-black text-gray-900">{formatCurrency(item.subtotal)}</p>
+                                        <h4 className="text-[11px] md:text-xs font-black text-gray-900 truncate leading-tight mb-0.5">{item.nombre}</h4>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-[10px] font-bold text-gray-400">{formatCurrency(item.precio)}</p>
+                                            <span className="w-1 h-1 bg-gray-200 rounded-full md:block hidden"></span>
+                                            <p className="text-[10px] font-black text-pirateRed md:text-gray-900">{formatCurrency(item.subtotal)}</p>
                                         </div>
                                     </div>
 
@@ -303,17 +297,13 @@ export const PedidoActivo = ({
                     )}
 
                     {carrito.length > 0 && (
-                        <div className="p-3 border-t bg-gray-50">
-                            <label className="text-xs font-medium text-gray-700 flex items-center mb-1">
-                                <FileText className="w-3 h-3 mr-1" />
-                                Notas del Pedido
-                            </label>
+                        <div className="p-2.5 border-t bg-gray-50">
                             <textarea
                                 value={notas}
                                 onChange={(e) => setNotas(e.target.value)}
-                                rows={2}
-                                className="w-full p-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-pirateRed focus:border-pirateRed"
-                                placeholder="Observaciones del pedido..."
+                                rows={1}
+                                className="w-full p-2 border border-gray-200 rounded-lg text-[11px] focus:ring-1 focus:ring-pirateRed focus:border-pirateRed bg-white"
+                                placeholder="Notas/Observaciones del pedido..."
                             />
                         </div>
                     )}
@@ -321,31 +311,31 @@ export const PedidoActivo = ({
             </div>
 
             {carrito.length > 0 && (
-                <div className="flex-shrink-0 p-3 sm:p-4 lg:p-5 border-t bg-gray-50/80 backdrop-blur-sm space-y-3 sm:space-y-4 rounded-b-2xl">
-                    <div className="space-y-2 sm:space-y-2.5">
-                        <div className="flex justify-between items-center text-xs">
-                            <span className="font-medium text-gray-400 uppercase tracking-tighter">Subtotal</span>
+                <div className="flex-shrink-0 p-3 md:p-5 border-t bg-gray-50/80 backdrop-blur-sm space-y-2.5 md:space-y-4 rounded-b-2xl">
+                    <div className="space-y-1.5 md:space-y-2.5">
+                        <div className="flex justify-between items-center text-[10px] md:text-xs">
+                            <span className="font-bold text-gray-400 uppercase tracking-widest">Subtotal</span>
                             <span className="font-black text-gray-900">{formatCurrency(getCarritoSubtotal())}</span>
                         </div>
                         {descuento > 0 && (
-                            <div className="flex justify-between items-center text-xs">
-                                <span className="font-medium text-green-500 uppercase tracking-tighter">Descuento</span>
+                            <div className="flex justify-between items-center text-[10px] md:text-xs">
+                                <span className="font-bold text-green-500 uppercase tracking-widest">Descuento</span>
                                 <span className="text-green-600 font-black">-{formatCurrency(descuentoTipo === 'porcentaje' ? getCarritoSubtotal() * descuento / 100 : descuento)}</span>
                             </div>
                         )}
                         {tipoEntregaId && tipoEntregaSeleccionado?.tiene_costo_asociado && (
-                            <div className="flex justify-between items-center text-xs">
-                                <span className="font-medium text-gray-400 uppercase tracking-tighter">Costo Envío</span>
+                            <div className="flex justify-between items-center text-[10px] md:text-xs">
+                                <span className="font-bold text-gray-400 uppercase tracking-widest">Costo Envío</span>
                                 {costoEnvio > 0 ? (
                                     <span className="font-black text-gray-900">{formatCurrency(costoEnvio)}</span>
                                 ) : (
-                                    <span className="font-black text-green-500">GRATUITO</span>
+                                    <span className="font-black text-green-500 uppercase tracking-widest">Gratis</span>
                                 )}
                             </div>
                         )}
-                        <div className="flex justify-between items-center pt-2.5 sm:pt-3 border-t border-gray-200">
-                            <span className="text-sm font-black text-gray-900 uppercase">Total Final</span>
-                            <span className="text-xl sm:text-2xl font-black text-pirateRed drop-shadow-sm">{formatCurrency(getCarritoTotalConEnvio())}</span>
+                        <div className="flex justify-between items-center pt-2 md:pt-3 border-t border-gray-200">
+                            <span className="text-xs md:text-sm font-black text-gray-900 uppercase tracking-widest">Total</span>
+                            <span className="text-lg md:text-2xl font-black text-pirateRed">{formatCurrency(getCarritoTotalConEnvio())}</span>
                         </div>
                     </div>
 

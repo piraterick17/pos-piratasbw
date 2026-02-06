@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { DateRangeSelector } from '../components/DateRangeSelector';
 import { ShoppingBag, MapPin, DollarSign, TrendingUp, Coffee } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -8,12 +8,20 @@ import { useDashboardData } from '../hooks/useDashboardData';
 
 const COLORS = ['#DC2626', '#EA580C', '#D97706', '#CA8A04', '#65A30D'];
 
-export function DashboardDesayunos() {
-  // Inicializar con rango por defecto (últimos 7 días) usando utilidades de tiempo
+export function DashboardDesayunos({ dateRange: externalRange, hideHeader }: { dateRange?: { start: string; end: string }, hideHeader?: boolean }) {
+  // Inicializar con rango por defecto (o prop)
   const [dateRange, setDateRange] = useState(() => {
+    if (externalRange) return { startDate: externalRange.start, endDate: externalRange.end };
     const [start, end] = getDateRangeMexico('week');
     return { startDate: start, endDate: end };
   });
+
+  // Sincronizar estado local si cambia la prop
+  useEffect(() => {
+    if (externalRange) {
+      setDateRange({ startDate: externalRange.start, endDate: externalRange.end });
+    }
+  }, [externalRange]);
 
   // Usar el nuevo Hook centralizado con el filtro de Desayunos activo
   const { data, loading } = useDashboardData(dateRange.startDate, dateRange.endDate, {
@@ -39,24 +47,25 @@ export function DashboardDesayunos() {
   return (
     <div className="h-full overflow-y-auto bg-gray-50/50">
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="bg-orange-600 p-2.5 rounded-lg shadow-sm">
-                <Coffee className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Dashboard Desayunos</h1>
-                <p className="text-sm text-gray-500">Horario matutino (8:00 AM - 12:00 PM México)</p>
+        {!hideHeader && (
+          <div className="mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="bg-orange-600 p-2.5 rounded-lg shadow-sm">
+                  <Coffee className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Dashboard Desayunos</h1>
+                  <p className="text-sm text-gray-500">Horario matutino (8:00 AM - 12:00 PM México)</p>
+                </div>
               </div>
             </div>
-          </div>
 
-          <DateRangeSelector
-            onRangeChange={handleDateRangeChange}
-          />
-        </div>
+            <DateRangeSelector
+              onRangeChange={handleDateRangeChange}
+            />
+          </div>
+        )}
 
         {/* Métricas principales */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

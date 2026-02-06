@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   TrendingUp,
   Package,
@@ -24,17 +24,27 @@ import {
   Legend
 } from 'recharts';
 
-export default function Analytics() {
+export default function Analytics({ dateRange, hideHeader }: { dateRange?: { start: string; end: string }, hideHeader?: boolean }) {
   const [rangeType, setRangeType] = useState<'today' | 'week' | 'month' | 'year'>('month');
 
-  const [dateRange, setDateRange] = useState(() => {
+  const initialRange = useMemo(() => {
+    if (dateRange) return dateRange;
     const [start, end] = getDateRangeMexico('month');
     return { start, end };
-  });
+  }, [dateRange]);
+
+  const [dateRangeState, setDateRange] = useState(initialRange);
+
+  // Sincronizar estado local si cambia la prop
+  useEffect(() => {
+    if (dateRange) {
+      setDateRange(dateRange);
+    }
+  }, [dateRange]);
 
   const { data: analytics, loading } = useDashboardData(
-    dateRange.start,
-    dateRange.end,
+    dateRangeState.start,
+    dateRangeState.end,
     { includeCancelled: false }
   );
 
@@ -61,33 +71,34 @@ export default function Analytics() {
     <div className="h-full overflow-y-auto bg-gray-50">
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
 
-        {/* Header con Selector de Rango */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-              <BarChart3 className="w-8 h-8 text-indigo-600" />
-              Análisis Avanzado
-            </h1>
-            <p className="text-sm text-gray-500 font-medium tracking-tight">
-              Datos consolidados de {rangeType === 'today' ? 'Hoy' : rangeType === 'week' ? 'esta Semana' : 'este Mes'}
-            </p>
-          </div>
+        {!hideHeader && (
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+                <BarChart3 className="w-8 h-8 text-indigo-600" />
+                Análisis Avanzado
+              </h1>
+              <p className="text-sm text-gray-500 font-medium tracking-tight">
+                Datos consolidados de {rangeType === 'today' ? 'Hoy' : rangeType === 'week' ? 'esta Semana' : 'este Mes'}
+              </p>
+            </div>
 
-          <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
-            {(['today', 'week', 'month'] as const).map((type) => (
-              <button
-                key={type}
-                onClick={() => handleRangeChange(type)}
-                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wider ${rangeType === type
-                  ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-md'
-                  : 'text-gray-400 hover:text-gray-900'
-                  }`}
-              >
-                {type === 'today' ? 'Hoy' : type === 'week' ? 'Semana' : 'Mes'}
-              </button>
-            ))}
+            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+              {(['today', 'week', 'month'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => handleRangeChange(type)}
+                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wider ${rangeType === type
+                    ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-md'
+                    : 'text-gray-400 hover:text-gray-900'
+                    }`}
+                >
+                  {type === 'today' ? 'Hoy' : type === 'week' ? 'Semana' : 'Mes'}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* KPIs Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

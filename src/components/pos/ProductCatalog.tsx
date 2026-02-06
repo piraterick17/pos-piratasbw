@@ -40,7 +40,7 @@ export const ProductCatalog = ({
         <div className="flex-1 lg:flex-[2] flex flex-col h-full overflow-hidden bg-gray-50/30">
             {/* Header Sticky con Glassmorphism */}
             <div className="sticky top-0 z-20 backdrop-blur-md bg-white/80 border-b border-gray-200">
-                <div className="p-4 sm:p-6 lg:px-8 lg:py-4">
+                <div className="p-3 sm:p-4 lg:px-8 lg:py-4">
                     {editingOrderId && (
                         <div className="bg-amber-500/10 border border-amber-500/50 rounded-xl p-3 mb-4 flex items-center justify-between shadow-sm">
                             <div className="flex items-center gap-3">
@@ -66,10 +66,10 @@ export const ProductCatalog = ({
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-pirateRed transition-colors" />
                             <input
                                 type="text"
-                                placeholder="Buscar delicias piratas..."
+                                placeholder="Buscar delicias..."
                                 value={searchTerm}
                                 onChange={(e) => onSearchChange(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-100/50 border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-pirateRed/20 focus:border-pirateRed transition-all outline-none"
+                                className="w-full pl-10 pr-4 py-2 text-sm md:py-2.5 bg-gray-100/50 border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-pirateRed/20 focus:border-pirateRed transition-all outline-none"
                             />
                         </div>
 
@@ -141,7 +141,7 @@ export const ProductCatalog = ({
                         onSearchChange={onSearchChange}
                     />
                 ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 xxl:grid-cols-5 gap-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 xxl:grid-cols-5 gap-3 md:gap-6">
                         {isLoading ? (
                             <div className="col-span-full flex flex-col items-center justify-center py-20 grayscale opacity-50">
                                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-pirateRed mb-4"></div>
@@ -166,13 +166,13 @@ export const ProductCatalog = ({
                                 return (
                                     <div
                                         key={producto.id}
-                                        className={`group relative bg-white rounded-2xl p-3 sm:p-4 hover:shadow-2xl transition-all duration-300 cursor-pointer border-2 overflow-hidden ${enCarrito
+                                        className={`group relative bg-white rounded-xl md:rounded-2xl p-2.5 md:p-4 hover:shadow-2xl transition-all duration-300 cursor-pointer border-2 overflow-hidden ${enCarrito
                                             ? 'border-pirateRed bg-pirateRed/5 shadow-xl shadow-pirateRed/10 -translate-y-1'
                                             : 'border-transparent shadow-sm hover:border-pirateRed/20 hover:-translate-y-1'
                                             }`}
                                         onClick={() => onAddToCarrito(producto)}
                                     >
-                                        <div className="aspect-square rounded-xl mb-4 flex items-center justify-center overflow-hidden bg-gray-50 relative group-hover:scale-105 transition-transform duration-500">
+                                        <div className="aspect-[4/3] md:aspect-square rounded-lg md:rounded-xl mb-2 md:mb-4 flex items-center justify-center overflow-hidden bg-gray-50 relative group-hover:scale-105 transition-transform duration-500">
                                             {producto.imagenes_urls && producto.imagenes_urls[0] ? (
                                                 <img src={producto.imagenes_urls[0]} alt={producto.nombre} className="w-full h-full object-cover" />
                                             ) : (
@@ -196,25 +196,24 @@ export const ProductCatalog = ({
                                             </div>
                                         </div>
 
-                                        <div className="space-y-1.5">
-                                            <h3 className="font-bold text-gray-900 text-sm line-clamp-2 min-h-[2.5rem] leading-tight group-hover:text-pirateRed transition-colors">
+                                        <div className="space-y-1 md:space-y-1.5">
+                                            <h3 className="font-bold text-gray-900 text-[11px] md:text-sm line-clamp-2 min-h-[1.5rem] md:min-h-[2.5rem] leading-tight group-hover:text-pirateRed transition-colors">
                                                 {producto.nombre}
                                             </h3>
-
-                                            <div className="flex items-end justify-between pt-1">
+                                            <div className="flex items-end justify-between pt-0.5 md:pt-1">
                                                 <div className="flex flex-col">
                                                     {producto.precio_descuento && producto.precio_descuento > 0 ? (
                                                         <>
-                                                            <span className="text-[10px] text-gray-400 line-through mb-[-2px]">{formatCurrency(producto.precio_regular)}</span>
-                                                            <span className="text-base font-black text-green-600">{formatCurrency(producto.precio_descuento)}</span>
+                                                            <span className="text-[8px] md:text-[10px] text-gray-400 line-through mb-[-2px]">{formatCurrency(producto.precio_regular)}</span>
+                                                            <span className="text-xs md:text-base font-black text-green-600">{formatCurrency(producto.precio_descuento)}</span>
                                                         </>
                                                     ) : (
-                                                        <span className="text-base font-black text-gray-900">{formatCurrency(precio)}</span>
+                                                        <span className="text-xs md:text-base font-black text-gray-900">{formatCurrency(precio)}</span>
                                                     )}
                                                 </div>
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${enCarrito ? 'bg-pirateRed text-white rotate-90 scale-110' : 'bg-gray-100 text-gray-400 group-hover:bg-pirateRed group-hover:text-white'
+                                                <div className={`w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all ${enCarrito ? 'bg-pirateRed text-white rotate-90 scale-110' : 'bg-gray-50 md:bg-gray-100 text-gray-300 md:text-gray-400 group-hover:bg-pirateRed group-hover:text-white'
                                                     }`}>
-                                                    <Tag className="w-4 h-4" />
+                                                    <Tag className="w-3 h-3 md:w-4 md:h-4" />
                                                 </div>
                                             </div>
                                         </div>

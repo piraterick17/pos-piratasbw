@@ -72,9 +72,12 @@ interface TendenciaData {
   pagadas: number;
 }
 
-export function DashboardEntregas() {
-  // Inicializar fechas directamente con el rango de "hoy"
-  const [initialStart, initialEnd] = getInitialDateRange();
+export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { start: string; end: string }, hideHeader?: boolean }) {
+  // Inicializar fechas directamente con el rango de "hoy" (o prop)
+  const [initialStart, initialEnd] = useMemo(() => {
+    if (dateRange) return [dateRange.start, dateRange.end];
+    return getInitialDateRange();
+  }, [dateRange]);
 
   const [metricas, setMetricas] = useState<MetricasEntrega | null>(null);
   const [entregasPorRepartidor, setEntregasPorRepartidor] = useState<EntregaPorRepartidor[]>([]);
@@ -84,6 +87,14 @@ export function DashboardEntregas() {
   const [startDate, setStartDate] = useState<string>(initialStart);
   const [endDate, setEndDate] = useState<string>(initialEnd);
   const [showAllZonas, setShowAllZonas] = useState(false);
+
+  // Sincronizar estado local si cambia la prop
+  useEffect(() => {
+    if (dateRange) {
+      setStartDate(dateRange.start);
+      setEndDate(dateRange.end);
+    }
+  }, [dateRange]);
 
   const handleDateRangeChange = (start: string, end: string) => {
     setStartDate(start);
@@ -506,19 +517,23 @@ export function DashboardEntregas() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-4 sm:p-6 lg:p-8 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-              <BarChart3 className="w-8 h-8 mr-3 text-blue-600" />
-              Dashboard de Entregas
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Análisis completo del sistema de entregas a domicilio
-            </p>
-          </div>
-        </div>
+        {!hideHeader && (
+          <>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+                  <BarChart3 className="w-8 h-8 mr-3 text-blue-600" />
+                  Dashboard de Entregas
+                </h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Análisis completo del sistema de entregas a domicilio
+                </p>
+              </div>
+            </div>
 
-        <DateRangeSelector onRangeChange={handleDateRangeChange} />
+            <DateRangeSelector onRangeChange={handleDateRangeChange} />
+          </>
+        )}
 
         {metricas && (
           <>

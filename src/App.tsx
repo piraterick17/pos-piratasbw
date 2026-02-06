@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { useLocation } from 'react-router-dom'; // <--- IMPORTANTE: Hook de navegación
 import { useUserStore } from './lib/store/useUserStore';
 import { LoginForm } from './components/LoginForm';
 import { ResetPasswordForm } from './components/ResetPasswordForm';
-import Analytics from './pages/Analytics';
+import { HubDashboard } from './pages/HubDashboard';
 import { Productos } from './pages/Productos';
 import { Clientes } from './pages/Clientes';
 import { Vender } from './pages/Vender';
@@ -14,7 +14,6 @@ import { Transacciones } from './pages/Transacciones';
 import { Reportes } from './pages/Reportes';
 import { GestionEnvios } from './pages/GestionEnvios';
 import { MisEntregas } from './pages/MisEntregas';
-import { DashboardEntregas } from './pages/DashboardEntregas';
 import { Insumos } from './pages/Insumos';
 import { Mermas } from './pages/Mermas';
 import { Proveedores } from './pages/Proveedores';
@@ -28,14 +27,12 @@ import WhatsApp from './pages/WhatsApp';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { Dashboard } from './pages/Dashboard'; // <--- Importado desde PAGES
-import { DashboardDesayunos } from './pages/DashboardDesayunos';
 
 function App() {
   const { user, isLoading, fetchUser } = useUserStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-  
+
   // Hook de navegación para leer la URL actual (reemplaza window.location.hash)
   const location = useLocation();
 
@@ -49,7 +46,7 @@ function App() {
         setIsInitialized(true);
       }
     };
-    
+
     initializeApp();
   }, [fetchUser]);
 
@@ -141,15 +138,15 @@ function App() {
       case 'reportes':
         return <ProtectedRoute routeName="reportes"><Reportes /></ProtectedRoute>;
       case 'analytics':
-        return <ProtectedRoute routeName="analytics"><Analytics /></ProtectedRoute>;
+        return <ProtectedRoute routeName="dashboard"><HubDashboard /></ProtectedRoute>;
       case 'gestion-envios':
         return <ProtectedRoute routeName="gestion-envios"><GestionEnvios /></ProtectedRoute>;
       case 'mis-entregas':
         return <ProtectedRoute routeName="mis-entregas"><MisEntregas /></ProtectedRoute>;
       case 'dashboard-entregas':
-        return <ProtectedRoute routeName="dashboard-entregas"><DashboardEntregas /></ProtectedRoute>;
+        return <ProtectedRoute routeName="dashboard"><HubDashboard /></ProtectedRoute>;
       case 'dashboard-desayunos':
-        return <ProtectedRoute routeName="dashboard-desayunos"><DashboardDesayunos /></ProtectedRoute>;
+        return <ProtectedRoute routeName="dashboard"><HubDashboard /></ProtectedRoute>;
       case 'gestion-financiera':
         return <ProtectedRoute routeName="gestion-financiera"><GestionFinanciera /></ProtectedRoute>;
       case 'insumos':
@@ -170,22 +167,22 @@ function App() {
         return <ProtectedRoute routeName="cocina"><UnifiedKitchenView /></ProtectedRoute>;
       case 'whatsapp':
         return <ProtectedRoute routeName="whatsapp"><WhatsApp /></ProtectedRoute>;
-      
+
       // Nueva Ruta para Dashboard y Default
       case 'dashboard':
-        return <ProtectedRoute routeName="dashboard"><Dashboard /></ProtectedRoute>;
+        return <ProtectedRoute routeName="dashboard"><HubDashboard /></ProtectedRoute>;
       default:
-        // Si no coincide con nada, mostramos Dashboard por defecto
-        return <ProtectedRoute routeName="dashboard"><Dashboard /></ProtectedRoute>;
+        // Si no coincide con nada, mostramos el HubDashboard por defecto
+        return <ProtectedRoute routeName="dashboard"><HubDashboard /></ProtectedRoute>;
     }
   };
 
   return (
     <>
       <div className="flex h-screen bg-gradient-to-br from-boneWhite to-white">
-        <Sidebar 
-          isOpen={isSidebarOpen} 
-          onClose={() => setIsSidebarOpen(false)} 
+        <Sidebar
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
           logoSrc={logoUrl}
         />
         <div className="flex-1 flex flex-col overflow-hidden transition-all duration-300">

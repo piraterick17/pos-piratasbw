@@ -43,18 +43,6 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     requiresAll: false,
   },
   {
-    route: 'dashboard-entregas',
-    label: 'Dashboard Entregas',
-    permissions: ['envios.ver.pendientes', 'reportes.ver'],
-    requiresAll: false,
-  },
-  {
-    route: 'dashboard-desayunos',
-    label: 'Dashboard Desayunos',
-    permissions: ['dashboard.ver', 'reportes.ver'],
-    requiresAll: false,
-  },
-  {
     route: 'repartidores',
     label: 'Repartidores',
     permissions: ['envios.ver.pendientes', 'usuarios.gestionar'],
@@ -104,19 +92,13 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   },
   {
     route: 'dashboard',
-    label: 'Dashboard',
-    permissions: ['dashboard.ver'],
-    requiresAll: false,
-  },
-  {
-    route: 'analytics',
-    label: 'Analisis Avanzado',
-    permissions: ['reportes.ver'],
+    label: 'Dashboard Hub',
+    permissions: ['dashboard.ver', 'reportes.ver'],
     requiresAll: false,
   },
   {
     route: 'reportes',
-    label: 'Reportes',
+    label: 'Reportes Históricos',
     permissions: ['reportes.ver'],
     requiresAll: false,
   },
