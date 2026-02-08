@@ -56,6 +56,10 @@ export function useDashboardData(startDate: string, endDate: string, options: Us
                     estado_nombre,
                     metodo_pago,
                     costo_envio,
+                    pagos (
+                        metodo_pago,
+                        monto
+                    ),
                     detalles_pedido (
                         cantidad,
                         precio_unitario,
@@ -220,7 +224,17 @@ export function useDashboardData(startDate: string, endDate: string, options: Us
                 ventasPorDia,
                 topSalsas,
                 topClientes,
-                rawData: filteredPedidos
+                rawData: filteredPedidos.map((p: any) => {
+                    let metodo = p.metodo_pago;
+                    if (!metodo && p.pagos && p.pagos.length > 0) {
+                        const methods = [...new Set(p.pagos.map((pay: any) => pay.metodo_pago))];
+                        metodo = methods.join(', ');
+                    }
+                    return {
+                        ...p,
+                        metodo_pago: metodo
+                    };
+                })
             });
 
         } catch (err) {

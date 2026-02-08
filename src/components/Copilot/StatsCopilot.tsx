@@ -18,7 +18,8 @@ interface KnowledgeNote {
     created_at: string;
 }
 
-const GEMINI_API_KEY = "AIzaSyC7wB46DSqpP6FfX61tt6lPnBE0_uEE56g";
+const GEMINI_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
+
 
 const SYSTEM_PROMPT = `
   Eres un Analista de Datos experto para el restaurante "Piratas". 
