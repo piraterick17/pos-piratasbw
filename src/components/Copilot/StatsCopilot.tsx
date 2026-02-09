@@ -26,11 +26,13 @@ const SYSTEM_PROMPT = `
   Tu tarea es traducir preguntas del usuario en lenguaje natural a consultas SQL válidas para PostgreSQL.
   
   ESQUEMA REAL DE LA BASE DE DATOS:
-  - pedidos_vista (VISTA RECOMENDADA): Contiene (id, total, cliente_nombre, estado_nombre, insert_date, etc.). 
-    * Nota: Ya filtra los pedidos eliminados (deleted_at IS NULL).
-  - detalles_pedido: Contiene (pedido_id, producto_id, cantidad, precio_unitario, subtotal).
-  - productos: Contiene (id, nombre, categoria_id, precio_regular).
-  - categorias: Contiene (id, nombre).
+  {{SCHEMA_PLACEHOLDER}}
+  
+  DEFINICIONES DE NEGOCIO (IMPORTANTE):
+  1. "Turno Matutino": Pedidos realizados entre las 08:00 AM y las 12:00 PM (Hora México). 
+     - En SQL: EXTRACT(HOUR FROM (insert_date AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')) BETWEEN 8 AND 11
+  2. "Pedido de Chilaquiles": Un pedido que contiene al menos un producto cuyo nombre incluye "Chilaquiles" (case insensitive).
+     - En SQL: EXISTS (SELECT 1 FROM detalles_pedido dp JOIN productos p ON dp.producto_id = p.id WHERE dp.pedido_id = pedidos_vista.id AND p.nombre ILIKE '%chilaquiles%')
   
   VISTAS Y FUNCIONES ÚTILES:
   - v_productos_mas_vendidos: (producto_id, producto_nombre, unidades_vendidas, ingresos_totales).
@@ -39,12 +41,18 @@ const SYSTEM_PROMPT = `
   REGLAS CRÍTICAS:
   1. Solo genera consultas SELECT. NUNCA INSERT, UPDATE o DELETE.
   2. Si el usuario pide PREDICCIONES o TENDENCIAS, obtén datos históricos y realiza la proyección en la explicación.
-  3. Si una consulta es muy estricta y sospechas que podría devolver cero resultados (ej. "semana tras semana sin falta"), sugiere en la explicación una forma más flexible de buscar (ej. "clientes con más de 3 compras al mes").
-  4. Para ventas de "hoy" usa: insert_date::date = CURRENT_DATE.
-  5. Para ventas de "ayer" usa: insert_date::date = CURRENT_DATE - 1.
-  6. Para meses: EXTRACT(MONTH FROM insert_date).
-  7. Responde ÚNICAMENTE en JSON: {"sql": "consulta", "explanation": "análisis y recomendaciones"}.
-  8. NUNCA incluyas punto y coma (;) ni comentarios en el SQL.
+  3. Para ventas de "hoy" usa: insert_date::date = CURRENT_DATE.
+  4. Para ventas de "ayer" usa: insert_date::date = CURRENT_DATE - 1.
+  5. Para meses: EXTRACT(MONTH FROM insert_date).
+  6. Responde ÚNICAMENTE en JSON: {"sql": "consulta", "explanation": "análisis y recomendaciones"}.
+  7. NUNCA incluyas punto y coma (;) ni comentarios en el SQL.
+
+  EJEMPLOS DE REFERENCIA:
+  - "Cuántas ordenes de chilaquiles vendí hoy?":
+    SELECT COUNT(*) FROM pedidos_vista WHERE insert_date::date = CURRENT_DATE AND (EXISTS (SELECT 1 FROM detalles_pedido dp JOIN productos p ON dp.producto_id = p.id WHERE dp.pedido_id = pedidos_vista.id AND p.nombre ILIKE '%chilaquiles%'))
+
+  - "Cuánto cobre por servicio a domicilio en turno matutino?":
+    SELECT SUM(costo_envio) FROM pedidos_vista WHERE tipo_entrega_nombre = 'A domicilio' AND (EXTRACT(HOUR FROM (insert_date AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')) BETWEEN 8 AND 11)
 `;
 
 export const StatsCopilot: React.FC = () => {
@@ -62,6 +70,7 @@ export const StatsCopilot: React.FC = () => {
     const [isTrainingMode, setIsTrainingMode] = useState(false);
     const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeNote[]>([]);
     const [newNote, setNewNote] = useState('');
+    const [dbSchema, setDbSchema] = useState<string>(''); // Dynamic Schema
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const fetchKnowledge = async () => {
@@ -73,6 +82,38 @@ export const StatsCopilot: React.FC = () => {
 
         if (data) setKnowledgeBase(data);
         if (error) console.error('Error fetching knowledge:', error);
+    };
+
+    const fetchSchema = async () => {
+        try {
+            const sql = `
+                SELECT table_name, string_agg(column_name || ': ' || udt_name, ', ') as columns
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                GROUP BY table_name
+                ORDER BY table_name
+            `;
+
+            const { data, error } = await supabase.rpc('execute_read_only_sql', {
+                sql_query: sql
+            });
+
+            if (error) throw error;
+
+            if (data && Array.isArray(data)) {
+                const schemaStr = data.map((row: any) => `- Table: ${row.table_name} (${row.columns})`).join('\n');
+                setDbSchema(schemaStr);
+            }
+        } catch (err) {
+            console.error('Error fetching schema:', err);
+            // Fallback to basic schema if fetch fails
+            setDbSchema(`
+              - pedidos_vista (id, total, cliente_nombre, estado_nombre, insert_date, tipo_entrega_nombre, costo_envio)
+              - detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario, subtotal)
+              - productos (id, nombre, categoria_id, precio_regular)
+              - categorias (id, nombre)
+            `);
+        }
     };
 
     const addNote = async () => {
@@ -98,6 +139,7 @@ export const StatsCopilot: React.FC = () => {
 
     useEffect(() => {
         fetchKnowledge();
+        fetchSchema();
     }, []);
 
     const scrollToBottom = () => {
@@ -127,13 +169,18 @@ export const StatsCopilot: React.FC = () => {
                 ? `\n\nCONOCIMIENTO ADICIONAL DEL USUARIO (ENTRENAMIENTO):\n${knowledgeBase.map((n, i) => `${i + 1}. ${n.content}`).join('\n')}`
                 : '';
 
+            // Inject Schema and Current Date
+            const currentDate = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City', hour12: true });
+            const promptWithSchema = SYSTEM_PROMPT.replace('{{SCHEMA_PLACEHOLDER}}', dbSchema || 'Cargando esquema...');
+            const finalSystemPrompt = `${promptWithSchema}\n\nFECHA Y HORA ACTUAL: ${currentDate}\n\n`;
+
             const cleanKey = GEMINI_API_KEY.trim();
             const aiResponseRaw = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${cleanKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{
-                        parts: [{ text: `${SYSTEM_PROMPT}${knowledgeContext}\n\nPregunta: ${input}\n\nResponde solo el objeto JSON solicitado.` }]
+                        parts: [{ text: `${finalSystemPrompt}${knowledgeContext}\n\nPregunta: ${input}\n\nResponde solo el objeto JSON solicitado.` }]
                     }],
                     generationConfig: {
                         response_mime_type: "application/json",

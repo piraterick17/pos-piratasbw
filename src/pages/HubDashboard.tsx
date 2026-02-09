@@ -52,7 +52,7 @@ export function HubDashboard() {
                     </div>
 
                     <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-2xl border border-gray-100">
-                        <DateRangeSelector onRangeChange={handleDateRangeChange} />
+                        <DateRangeSelector onRangeChange={handleDateRangeChange} variant="inline" />
                     </div>
                 </div>
 
