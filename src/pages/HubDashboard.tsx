@@ -57,7 +57,7 @@ export function HubDashboard() {
                 </div>
 
                 {/* Sistema de Tabs Estilo Premium */}
-                <div className="max-w-7xl mx-auto mt-8">
+                <div className="max-w-7xl mx-auto mt-4">
                     <div className="flex overflow-x-auto gap-2 no-scrollbar pb-1">
                         {tabs.map((tab) => (
                             <button

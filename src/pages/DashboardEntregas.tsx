@@ -2,15 +2,14 @@ import { useEffect, useState, useMemo } from 'react';
 import {
   Truck,
   TrendingUp,
-  Clock,
-  AlertTriangle,
   MapPin,
   BarChart3,
-  User,
   DollarSign,
   Gift,
   Coffee,
-  Loader2
+  Loader2,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { supabase } from '../lib/supabase/client';
 import { formatCurrency } from '../lib/utils/format';
@@ -47,15 +46,6 @@ interface MetricasEntrega {
   promedio_envios_pagados: number;
 }
 
-interface EntregaPorRepartidor {
-  repartidor_id: string;
-  repartidor_nombre: string;
-  total_entregas: number;
-  entregas_completadas: number;
-  tiempo_promedio: number;
-  tasa_exito: number;
-}
-
 interface EntregaPorZona {
   zona_id: number;
   zona_nombre: string;
@@ -73,22 +63,33 @@ interface TendenciaData {
 }
 
 export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { start: string; end: string }, hideHeader?: boolean }) {
-  // Inicializar fechas directamente con el rango de "hoy" (o prop)
   const [initialStart, initialEnd] = useMemo(() => {
     if (dateRange) return [dateRange.start, dateRange.end];
     return getInitialDateRange();
   }, [dateRange]);
 
   const [metricas, setMetricas] = useState<MetricasEntrega | null>(null);
-  const [entregasPorRepartidor, setEntregasPorRepartidor] = useState<EntregaPorRepartidor[]>([]);
   const [entregasPorZona, setEntregasPorZona] = useState<EntregaPorZona[]>([]);
+  const [zonasTarde, setZonasTarde] = useState<EntregaPorZona[]>([]);
   const [tendenciaData, setTendenciaData] = useState<TendenciaData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [startDate, setStartDate] = useState<string>(initialStart);
   const [endDate, setEndDate] = useState<string>(initialEnd);
   const [showAllZonas, setShowAllZonas] = useState(false);
+  const [metricasManana, setMetricasManana] = useState<{ entregas: number; costo_envio_total: number }>({ entregas: 0, costo_envio_total: 0 });
+  const [metricasTardeState, setMetricasTardeState] = useState<{ entregas: number; costo_envio_total: number }>({ entregas: 0, costo_envio_total: 0 });
 
-  // Sincronizar estado local si cambia la prop
+  // Helper: obtener hora local de México desde un string UTC
+  const getMexicoHour = (dateStr: string): number => {
+    const date = new Date(dateStr);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Mexico_City',
+      hour: 'numeric',
+      hour12: false
+    });
+    return parseInt(formatter.format(date), 10);
+  };
+
   useEffect(() => {
     if (dateRange) {
       setStartDate(dateRange.start);
@@ -101,7 +102,6 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
     setEndDate(end);
   };
 
-  // Cargar datos cuando cambian las fechas
   useEffect(() => {
     if (startDate && endDate) {
       cargarDatos();
@@ -113,7 +113,6 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
     try {
       await Promise.all([
         cargarMetricas(),
-        cargarEntregasPorRepartidor(),
         cargarEntregasPorZona(),
         cargarTendencia()
       ]);
@@ -126,7 +125,6 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
 
   const cargarMetricas = async () => {
     try {
-
       const { data: pedidos, error: pedidosError } = await supabase
         .from('pedidos')
         .select(`
@@ -244,6 +242,31 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
         ? pedidosPagados.reduce((sum, p) => sum + (p.total || 0), 0) / pedidosPagados.length
         : 0;
 
+      // ── Métricas por turno (hora local de México) ──
+      const pedidosManana = pedidos?.filter(p => {
+        const hour = getMexicoHour(p.insert_date);
+        return hour >= 8 && hour < 14;
+      }) || [];
+
+      const pedidosTardeArr = pedidos?.filter(p => {
+        const hour = getMexicoHour(p.insert_date);
+        return hour >= 14 && hour < 23;
+      }) || [];
+
+      setMetricasManana({
+        entregas: pedidosManana.length,
+        costo_envio_total: pedidosManana
+          .filter(p => p.costo_envio && p.costo_envio > 0)
+          .reduce((sum, p) => sum + (p.costo_envio || 0), 0)
+      });
+
+      setMetricasTardeState({
+        entregas: pedidosTardeArr.length,
+        costo_envio_total: pedidosTardeArr
+          .filter(p => p.costo_envio && p.costo_envio > 0)
+          .reduce((sum, p) => sum + (p.costo_envio || 0), 0)
+      });
+
       const metricasCalculadas = {
         total_entregas: pedidos?.length || 0,
         entregadas: entregasCompletadas.length,
@@ -268,74 +291,6 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
     }
   };
 
-  const cargarEntregasPorRepartidor = async () => {
-    console.log('👤 Cargando entregas por repartidor...');
-    try {
-      const { data: asignaciones, error } = await supabase
-        .from('asignaciones_entrega')
-        .select(`
-          *,
-          repartidor:usuarios!repartidor_id(
-            id,
-            nombre
-          )
-        `)
-        .gte('fecha_asignacion', startDate)
-        .lte('fecha_asignacion', endDate)
-        .not('repartidor_id', 'is', null);
-
-      if (error) {
-        console.error('❌ Error en query repartidores:', error);
-        throw error;
-      }
-
-      console.log(`✅ Asignaciones de repartidores: ${asignaciones?.length || 0}`);
-
-      const repartidoresMap = new Map<string, EntregaPorRepartidor>();
-      asignaciones?.forEach(a => {
-        if (!a.repartidor_id || !a.repartidor) return;
-
-        if (!repartidoresMap.has(a.repartidor_id)) {
-          repartidoresMap.set(a.repartidor_id, {
-            repartidor_id: a.repartidor_id,
-            repartidor_nombre: a.repartidor.nombre,
-            total_entregas: 0,
-            entregas_completadas: 0,
-            tiempo_promedio: 0,
-            tasa_exito: 0
-          });
-        }
-
-        const rep = repartidoresMap.get(a.repartidor_id)!;
-        rep.total_entregas++;
-        if (a.estado === 'entregado') {
-          rep.entregas_completadas++;
-          if (a.tiempo_total_minutos) {
-            rep.tiempo_promedio += a.tiempo_total_minutos;
-          }
-        }
-      });
-
-      const repArray = Array.from(repartidoresMap.values()).map(rep => ({
-        ...rep,
-        tiempo_promedio: rep.entregas_completadas > 0
-          ? Math.round(rep.tiempo_promedio / rep.entregas_completadas)
-          : 0,
-        tasa_exito: rep.total_entregas > 0
-          ? Math.round((rep.entregas_completadas / rep.total_entregas) * 100)
-          : 0
-      }));
-
-      repArray.sort((a, b) => b.entregas_completadas - a.entregas_completadas);
-      console.log(`👥 Total repartidores procesados: ${repArray.length}`);
-      setEntregasPorRepartidor(repArray);
-
-    } catch (error) {
-      console.error('❌ Error cargando repartidores:', error);
-      throw error;
-    }
-  };
-
   const cargarEntregasPorZona = async () => {
     console.log('🗺️ Cargando entregas por zona...');
     try {
@@ -343,6 +298,7 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
         .from('pedidos')
         .select(`
           id,
+          insert_date,
           zona_entrega_id,
           zonas_entrega(
             id,
@@ -415,6 +371,46 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
       zonasArray.sort((a, b) => b.total_entregas - a.total_entregas);
       console.log(`🌍 Total zonas procesadas: ${zonasArray.length}`);
       setEntregasPorZona(zonasArray);
+
+      // ── Distribución de zonas del turno vespertino (2pm–11pm MX) ──
+      const pedidosTardeZona = pedidos?.filter(p => {
+        if (!p.insert_date || !p.zona_entrega_id || !p.zonas_entrega) return false;
+        const hour = getMexicoHour(p.insert_date);
+        return hour >= 14 && hour < 23;
+      }) || [];
+
+      const zonasTardeMap = new Map<number, EntregaPorZona>();
+      let totalTarde = 0;
+
+      pedidosTardeZona.forEach(p => {
+        const zonaId = p.zona_entrega_id!;
+        const zonaNombre = Array.isArray(p.zonas_entrega)
+          ? p.zonas_entrega[0]?.nombre
+          : (p.zonas_entrega as any)?.nombre || 'Zona desconocida';
+
+        if (!zonasTardeMap.has(zonaId)) {
+          zonasTardeMap.set(zonaId, {
+            zona_id: zonaId,
+            zona_nombre: zonaNombre,
+            total_entregas: 0,
+            tiempo_promedio: 0,
+            porcentaje: 0,
+            intensidad: 0
+          });
+        }
+
+        zonasTardeMap.get(zonaId)!.total_entregas++;
+        totalTarde++;
+      });
+
+      const maxTarde = Math.max(0, ...Array.from(zonasTardeMap.values()).map(z => z.total_entregas));
+      const zonasTardeArray = Array.from(zonasTardeMap.values()).map(z => ({
+        ...z,
+        porcentaje: totalTarde > 0 ? Math.round((z.total_entregas / totalTarde) * 100) : 0,
+        intensidad: maxTarde > 0 ? Math.round((z.total_entregas / maxTarde) * 100) : 0
+      }));
+      zonasTardeArray.sort((a, b) => b.total_entregas - a.total_entregas);
+      setZonasTarde(zonasTardeArray);
 
     } catch (error) {
       console.error('❌ Error cargando zonas:', error);
@@ -537,7 +533,8 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
 
         {metricas && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            {/* Tarjetas de métricas generales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
@@ -606,38 +603,56 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-xs font-medium text-gray-500">Tiempo Promedio</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">
-                      {metricas.tiempo_promedio_minutos}
-                      <span className="text-sm text-gray-500"> min</span>
-                    </p>
+            {/* Métricas por Turno */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-200 p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                    <Sun className="w-5 h-5 text-amber-600" />
                   </div>
-                  <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-teal-600" />
+                  <div>
+                    <h4 className="font-bold text-gray-900">Turno Matutino</h4>
+                    <p className="text-xs text-gray-500">8:00 AM – 2:00 PM</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Entregas</p>
+                    <p className="text-2xl font-bold text-amber-700">{metricasManana.entregas}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Ingresos Envío</p>
+                    <p className="text-2xl font-bold text-amber-700">{formatCurrency(metricasManana.costo_envio_total)}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-xs font-medium text-gray-500">Entregas Urgentes</p>
-                    <p className="text-2xl font-bold text-red-600 mt-1">
-                      {metricas.entregas_urgentes}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">Más de 45 min</p>
+              <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl shadow-sm border border-indigo-200 p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <Moon className="w-5 h-5 text-indigo-600" />
                   </div>
-                  <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                  <div>
+                    <h4 className="font-bold text-gray-900">Turno Vespertino</h4>
+                    <p className="text-xs text-gray-500">2:00 PM – 11:00 PM</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Entregas</p>
+                    <p className="text-2xl font-bold text-indigo-700">{metricasTardeState.entregas}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Ingresos Envío</p>
+                    <p className="text-2xl font-bold text-indigo-700">{formatCurrency(metricasTardeState.costo_envio_total)}</p>
                   </div>
                 </div>
               </div>
             </div>
 
+            {/* Tendencia de Entregas */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center">
@@ -701,7 +716,9 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
               )}
             </div>
 
+            {/* Zonas: General + Vespertino */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Mapa de Calor por Zonas (todas) */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900 flex items-center">
@@ -761,49 +778,35 @@ export function DashboardEntregas({ dateRange, hideHeader }: { dateRange?: { sta
                 )}
               </div>
 
+              {/* Distribución Zonas Vespertino (2pm–11pm) */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <User className="w-5 h-5 mr-2 text-blue-600" />
-                  Desempeño por Repartidor
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                    <Moon className="w-5 h-5 mr-2 text-indigo-600" />
+                    Zonas Turno Vespertino
+                  </h3>
+                  <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full font-medium">2:00 PM – 11:00 PM</span>
+                </div>
 
-                {entregasPorRepartidor.length === 0 ? (
+                {zonasTarde.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    <User className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                    <p>No hay datos de repartidores en este período</p>
+                    <MapPin className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                    <p>No hay datos de zonas vespertinas en este período</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
-                    {entregasPorRepartidor.map((rep, index) => (
-                      <div key={rep.repartidor_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center space-x-3 flex-1">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                            <span className="text-sm font-bold text-blue-600">#{index + 1}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{rep.repartidor_nombre}</p>
-                            <div className="flex items-center gap-3 mt-1">
-                              <span className="text-xs text-gray-600">
-                                {rep.entregas_completadas} entregas
-                              </span>
-                              <span className="text-xs text-gray-600">
-                                {rep.tiempo_promedio} min
-                              </span>
-                            </div>
-                          </div>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {zonasTarde.map((zona) => (
+                      <div
+                        key={zona.zona_id}
+                        className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        <div className={`w-4 h-4 rounded ${getColorForIntensity(zona.intensidad)} mr-3 flex-shrink-0`}></div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 truncate">{zona.zona_nombre}</p>
                         </div>
                         <div className="text-right ml-4">
-                          <div className="flex items-center">
-                            <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
-                              <div
-                                className="bg-green-500 h-2 rounded-full"
-                                style={{ width: `${rep.tasa_exito}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {rep.tasa_exito}%
-                            </span>
-                          </div>
+                          <p className="text-lg font-bold text-gray-900">{zona.total_entregas}</p>
+                          <p className="text-xs text-gray-500">{zona.porcentaje}%</p>
                         </div>
                       </div>
                     ))}
