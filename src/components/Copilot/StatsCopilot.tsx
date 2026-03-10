@@ -1,14 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, X, Sparkles, Terminal, Activity, Settings, Plus, Trash2, BookOpen } from 'lucide-react';
+import { Bot, Send, X, Sparkles, Settings, Plus, Trash2, BookOpen, MessageSquare } from 'lucide-react';
 import { supabase } from '../../lib/supabase/client';
-import { formatCurrency } from '../../lib/utils/formatters';
 
 interface Message {
     id: string;
     role: 'user' | 'assistant';
     content: string;
-    data?: any[];
-    sql?: string;
     timestamp: Date;
 }
 
@@ -18,42 +15,102 @@ interface KnowledgeNote {
     created_at: string;
 }
 
-const GEMINI_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
+// ─── Simple Markdown Renderer ──────────────────────────────────────────
+const renderMarkdown = (text: string): React.ReactNode => {
+    if (!text) return null;
 
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
 
-const SYSTEM_PROMPT = `
-  Eres un Analista de Datos experto para el restaurante "Piratas". 
-  Tu tarea es traducir preguntas del usuario en lenguaje natural a consultas SQL válidas para PostgreSQL.
-  
-  ESQUEMA REAL DE LA BASE DE DATOS:
-  {{SCHEMA_PLACEHOLDER}}
-  
-  DEFINICIONES DE NEGOCIO (IMPORTANTE):
-  1. "Turno Matutino": Pedidos realizados entre las 08:00 AM y las 12:00 PM (Hora México). 
-     - En SQL: EXTRACT(HOUR FROM (insert_date AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')) BETWEEN 8 AND 11
-  2. "Pedido de Chilaquiles": Un pedido que contiene al menos un producto cuyo nombre incluye "Chilaquiles" (case insensitive).
-     - En SQL: EXISTS (SELECT 1 FROM detalles_pedido dp JOIN productos p ON dp.producto_id = p.id WHERE dp.pedido_id = pedidos_vista.id AND p.nombre ILIKE '%chilaquiles%')
-  
-  VISTAS Y FUNCIONES ÚTILES:
-  - v_productos_mas_vendidos: (producto_id, producto_nombre, unidades_vendidas, ingresos_totales).
-  - get_productos_top_ventas(p_fecha_inicio::timestamptz, p_fecha_fin::timestamptz, p_limite::int): Ranking de productos.
-  
-  REGLAS CRÍTICAS:
-  1. Solo genera consultas SELECT. NUNCA INSERT, UPDATE o DELETE.
-  2. Si el usuario pide PREDICCIONES o TENDENCIAS, obtén datos históricos y realiza la proyección en la explicación.
-  3. Para ventas de "hoy" usa: insert_date::date = CURRENT_DATE.
-  4. Para ventas de "ayer" usa: insert_date::date = CURRENT_DATE - 1.
-  5. Para meses: EXTRACT(MONTH FROM insert_date).
-  6. Responde ÚNICAMENTE en JSON: {"sql": "consulta", "explanation": "análisis y recomendaciones"}.
-  7. NUNCA incluyas punto y coma (;) ni comentarios en el SQL.
+    lines.forEach((line, lineIdx) => {
+        // Headers
+        if (line.startsWith('### ')) {
+            elements.push(<h4 key={lineIdx} className="font-bold text-gray-800 text-xs mt-3 mb-1">{renderInline(line.slice(4))}</h4>);
+            return;
+        }
+        if (line.startsWith('## ')) {
+            elements.push(<h3 key={lineIdx} className="font-bold text-gray-800 text-sm mt-3 mb-1">{renderInline(line.slice(3))}</h3>);
+            return;
+        }
+        if (line.startsWith('# ')) {
+            elements.push(<h2 key={lineIdx} className="font-bold text-gray-800 text-base mt-3 mb-1">{renderInline(line.slice(2))}</h2>);
+            return;
+        }
 
-  EJEMPLOS DE REFERENCIA:
-  - "Cuántas ordenes de chilaquiles vendí hoy?":
-    SELECT COUNT(*) FROM pedidos_vista WHERE insert_date::date = CURRENT_DATE AND (EXISTS (SELECT 1 FROM detalles_pedido dp JOIN productos p ON dp.producto_id = p.id WHERE dp.pedido_id = pedidos_vista.id AND p.nombre ILIKE '%chilaquiles%'))
+        // Bullet list items
+        if (line.match(/^[\-\*]\s/)) {
+            elements.push(
+                <div key={lineIdx} className="flex gap-1.5 ml-1 my-0.5">
+                    <span className="text-pirateRed mt-0.5 text-xs">•</span>
+                    <span className="text-xs leading-relaxed">{renderInline(line.slice(2))}</span>
+                </div>
+            );
+            return;
+        }
 
-  - "Cuánto cobre por servicio a domicilio en turno matutino?":
-    SELECT SUM(costo_envio) FROM pedidos_vista WHERE tipo_entrega_nombre = 'A domicilio' AND (EXTRACT(HOUR FROM (insert_date AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')) BETWEEN 8 AND 11)
-`;
+        // Numbered list items
+        if (line.match(/^\d+\.\s/)) {
+            const match = line.match(/^(\d+)\.\s(.*)$/);
+            if (match) {
+                elements.push(
+                    <div key={lineIdx} className="flex gap-1.5 ml-1 my-0.5">
+                        <span className="text-pirateRed font-bold text-xs min-w-[16px]">{match[1]}.</span>
+                        <span className="text-xs leading-relaxed">{renderInline(match[2])}</span>
+                    </div>
+                );
+                return;
+            }
+        }
+
+        // Empty line
+        if (line.trim() === '') {
+            elements.push(<div key={lineIdx} className="h-2" />);
+            return;
+        }
+
+        // Regular paragraph
+        elements.push(<p key={lineIdx} className="text-xs leading-relaxed my-0.5">{renderInline(line)}</p>);
+    });
+
+    return <>{elements}</>;
+};
+
+// Inline markdown: **bold**, *italic*, `code`, emojis
+const renderInline = (text: string): React.ReactNode => {
+    const parts: React.ReactNode[] = [];
+    // Match **bold**, *italic*, `code`
+    const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+        // Add text before the match
+        if (match.index > lastIndex) {
+            parts.push(text.slice(lastIndex, match.index));
+        }
+
+        if (match[2]) {
+            // **bold**
+            parts.push(<strong key={match.index} className="font-bold text-gray-900">{match[2]}</strong>);
+        } else if (match[3]) {
+            // *italic*
+            parts.push(<em key={match.index} className="italic">{match[3]}</em>);
+        } else if (match[4]) {
+            // `code`
+            parts.push(<code key={match.index} className="bg-gray-100 text-pirateRed px-1 py-0.5 rounded text-[10px] font-mono">{match[4]}</code>);
+        }
+
+        lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+        parts.push(text.slice(lastIndex));
+    }
+
+    return parts.length > 0 ? <>{parts}</> : text;
+};
+
 
 export const StatsCopilot: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
@@ -62,7 +119,7 @@ export const StatsCopilot: React.FC = () => {
         {
             id: '1',
             role: 'assistant',
-            content: '¡Listo! Soy tu Copiloto Pirata 2.0. ⚓️ Ya tengo cargada tu nueva energía. ¿Qué quieres saber sobre los datos de Piratas hoy?',
+            content: '¡Ahoy! 🏴‍☠️ Soy tu **Copilot Pirata**, tu asistente de datos con IA.\n\nPuedo ayudarte con:\n- 📊 **Consultar datos**: _"¿Cuánto vendí hoy?"_\n- 🔍 **Análisis**: _"¿Cuál es mi producto estrella?"_\n- 💡 **Consejos**: _"¿Cómo puedo mejorar mis ventas?"_\n- 💬 **Conversación natural**: Puedes hacer seguimiento de cualquier pregunta.\n\n¿En qué te ayudo?',
             timestamp: new Date()
         }
     ]);
@@ -70,7 +127,6 @@ export const StatsCopilot: React.FC = () => {
     const [isTrainingMode, setIsTrainingMode] = useState(false);
     const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeNote[]>([]);
     const [newNote, setNewNote] = useState('');
-    const [dbSchema, setDbSchema] = useState<string>(''); // Dynamic Schema
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const fetchKnowledge = async () => {
@@ -82,38 +138,6 @@ export const StatsCopilot: React.FC = () => {
 
         if (data) setKnowledgeBase(data);
         if (error) console.error('Error fetching knowledge:', error);
-    };
-
-    const fetchSchema = async () => {
-        try {
-            const sql = `
-                SELECT table_name, string_agg(column_name || ': ' || udt_name, ', ') as columns
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                GROUP BY table_name
-                ORDER BY table_name
-            `;
-
-            const { data, error } = await supabase.rpc('execute_read_only_sql', {
-                sql_query: sql
-            });
-
-            if (error) throw error;
-
-            if (data && Array.isArray(data)) {
-                const schemaStr = data.map((row: any) => `- Table: ${row.table_name} (${row.columns})`).join('\n');
-                setDbSchema(schemaStr);
-            }
-        } catch (err) {
-            console.error('Error fetching schema:', err);
-            // Fallback to basic schema if fetch fails
-            setDbSchema(`
-              - pedidos_vista (id, total, cliente_nombre, estado_nombre, insert_date, tipo_entrega_nombre, costo_envio)
-              - detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario, subtotal)
-              - productos (id, nombre, categoria_id, precio_regular)
-              - categorias (id, nombre)
-            `);
-        }
     };
 
     const addNote = async () => {
@@ -139,7 +163,6 @@ export const StatsCopilot: React.FC = () => {
 
     useEffect(() => {
         fetchKnowledge();
-        fetchSchema();
     }, []);
 
     const scrollToBottom = () => {
@@ -165,78 +188,44 @@ export const StatsCopilot: React.FC = () => {
         setIsLoading(true);
 
         try {
-            const knowledgeContext = knowledgeBase.length > 0
-                ? `\n\nCONOCIMIENTO ADICIONAL DEL USUARIO (ENTRENAMIENTO):\n${knowledgeBase.map((n, i) => `${i + 1}. ${n.content}`).join('\n')}`
-                : '';
+            // Build conversation history for the Edge Function
+            // Include all messages (except the initial greeting) for context
+            const allMessages = [...messages.filter(m => m.id !== '1'), userMessage];
+            const conversationHistory = allMessages.map(m => ({
+                role: m.role,
+                content: m.role === 'assistant'
+                    ? m.content  // Send the text response for context
+                    : m.content
+            }));
 
-            // Inject Schema and Current Date
-            const currentDate = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City', hour12: true });
-            const promptWithSchema = SYSTEM_PROMPT.replace('{{SCHEMA_PLACEHOLDER}}', dbSchema || 'Cargando esquema...');
-            const finalSystemPrompt = `${promptWithSchema}\n\nFECHA Y HORA ACTUAL: ${currentDate}\n\n`;
+            // Knowledge base as array of strings
+            const knowledgeStrings = knowledgeBase.map(n => n.content);
 
-            const cleanKey = GEMINI_API_KEY.trim();
-            const aiResponseRaw = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${cleanKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: `${finalSystemPrompt}${knowledgeContext}\n\nPregunta: ${input}\n\nResponde solo el objeto JSON solicitado.` }]
-                    }],
-                    generationConfig: {
-                        response_mime_type: "application/json",
-                        temperature: 0.1
-                    }
-                })
+            // Call Edge Function instead of Gemini directly
+            const { data, error } = await supabase.functions.invoke('stats-agent', {
+                body: {
+                    messages: conversationHistory,
+                    knowledgeBase: knowledgeStrings.length > 0 ? knowledgeStrings : undefined
+                }
             });
 
-            if (!aiResponseRaw.ok) {
-                const errorData = await aiResponseRaw.json().catch(() => ({}));
-                throw new Error(`Error API: ${errorData.error?.message || 'Fallo de conexión'}`);
-            }
+            if (error) throw new Error(error.message || 'Error calling AI');
 
-            let currentSql = '';
-            try {
-                const aiResult = await aiResponseRaw.json();
-                const textResponse = aiResult.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!textResponse) throw new Error('La IA no devolvió respuesta.');
+            const response = data;
 
-                const startIdx = textResponse.indexOf('{');
-                const endIdx = textResponse.lastIndexOf('}');
-                if (startIdx === -1 || endIdx === -1) throw new Error('Formato JSON inválido.');
-
-                const aiContent = JSON.parse(textResponse.substring(startIdx, endIdx + 1));
-                currentSql = aiContent.sql;
-
-                const { data: sqlData, error: sqlError } = await supabase.rpc('execute_read_only_sql', {
-                    sql_query: currentSql
-                });
-
-                if (sqlError) throw new Error(sqlError.message);
-
-                setMessages(prev => [...prev, {
-                    id: Date.now().toString(),
-                    role: 'assistant',
-                    content: aiContent.explanation,
-                    data: sqlData,
-                    sql: currentSql,
-                    timestamp: new Date()
-                }]);
-            } catch (err: any) {
-                console.error('Error in StatsCopilot:', err);
-                setMessages(prev => [...prev, {
-                    id: Date.now().toString(),
-                    role: 'assistant',
-                    content: `🚨 Error: ${err.message} 🏴‍☠️`,
-                    sql: currentSql,
-                    timestamp: new Date()
-                }]);
-            }
-        } catch (err: any) {
-            console.error('External error:', err);
             setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 role: 'assistant',
-                content: `🚨 Error Crítico: ${err.message} 🏴‍☠️`,
+                content: response.response || 'No obtuve una respuesta clara. Intenta de nuevo.',
+                timestamp: new Date()
+            }]);
+
+        } catch (err: any) {
+            console.error('Copilot error:', err);
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: `⚠️ **Error**: ${err.message}\n\nIntenta reformular tu pregunta. 🏴‍☠️`,
                 timestamp: new Date()
             }]);
         } finally {
@@ -244,9 +233,18 @@ export const StatsCopilot: React.FC = () => {
         }
     };
 
+    const clearConversation = () => {
+        setMessages([{
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: '🧹 Conversación limpia. ¿En qué te ayudo ahora?',
+            timestamp: new Date()
+        }]);
+    };
+
     return (
         <>
-            {/* Botón Flotante */}
+            {/* Floating Button */}
             <button
                 onClick={() => setIsOpen(true)}
                 className={`fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-br from-pirateRed to-pirateRedDark text-white shadow-2xl shadow-pirateRed/30 flex items-center justify-center transition-all duration-500 z-40 hover:scale-110 active:scale-95 ${isOpen ? 'opacity-0 scale-0 pointer-events-none' : 'opacity-100 scale-100'}`}
@@ -254,30 +252,37 @@ export const StatsCopilot: React.FC = () => {
                 <Sparkles className="w-6 h-6 animate-pulse" />
             </button>
 
-            {/* Panel de Chat */}
-            <div className={`fixed bottom-6 right-6 w-[400px] max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-6rem)] bg-white rounded-[2.5rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden transition-all duration-500 z-50 border border-gray-100 ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none translate-y-10'}`}>
+            {/* Chat Panel */}
+            <div className={`fixed bottom-6 right-6 w-[420px] max-w-[calc(100vw-3rem)] h-[650px] max-h-[calc(100vh-6rem)] bg-white rounded-[2.5rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden transition-all duration-500 z-50 border border-gray-100 ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none translate-y-10'}`}>
 
                 {/* Header */}
-                <div className="bg-gradient-to-br from-gray-900 to-black p-6 text-white flex items-center justify-between">
+                <div className="bg-gradient-to-br from-gray-900 to-black p-5 text-white flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-pirateRed flex items-center justify-center shadow-lg shadow-pirateRed/20">
+                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-pirateRed to-pirateRedDark flex items-center justify-center shadow-lg shadow-pirateRed/30">
                             <Bot className="w-6 h-6" />
                         </div>
                         <div>
                             <h3 className="font-black text-sm uppercase tracking-widest text-pirateRed">Copilot AI</h3>
                             <div className="flex items-center gap-1.5">
                                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Conectado a Bodega</span>
+                                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Gemini 2.5 · Piratas</span>
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={clearConversation}
+                            className="p-2 hover:bg-white/10 rounded-xl transition-colors text-gray-400 hover:text-white"
+                            title="Nueva conversación"
+                        >
+                            <MessageSquare className="w-4 h-4" />
+                        </button>
                         <button
                             onClick={() => setIsTrainingMode(!isTrainingMode)}
                             className={`p-2 rounded-xl transition-all ${isTrainingMode ? 'bg-pirateRed text-white' : 'hover:bg-white/10 text-gray-400'}`}
-                            title={isTrainingMode ? "Volver al Chat" : "Entrenar IA"}
+                            title={isTrainingMode ? "Volver al Chat" : "Base de Conocimiento"}
                         >
-                            <Settings className="w-5 h-5" />
+                            <Settings className="w-4 h-4" />
                         </button>
                         <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white">
                             <X className="w-5 h-5" />
@@ -294,13 +299,13 @@ export const StatsCopilot: React.FC = () => {
                                 <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-500">Base de Conocimientos</h4>
                             </div>
 
-                            {/* Formulario */}
+                            {/* Form */}
                             <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm mb-6">
                                 <textarea
                                     value={newNote}
                                     onChange={(e) => setNewNote(e.target.value)}
-                                    placeholder="Escribe algo que la IA deba saber (ej: 'La tabla X tiene los costos')"
-                                    className="w-full text-xs bg-gray-50 border-none rounded-xl p-3 focus:ring-2 focus:ring-pirateRed/10 min-h-[80px] outline-none"
+                                    placeholder="Escribe algo que la IA deba saber (ej: 'Los chilaquiles son nuestro producto estrella del desayuno')"
+                                    className="w-full text-xs bg-gray-50 border-none rounded-xl p-3 focus:ring-2 focus:ring-pirateRed/10 min-h-[80px] outline-none resize-none"
                                 />
                                 <button
                                     onClick={addNote}
@@ -311,8 +316,15 @@ export const StatsCopilot: React.FC = () => {
                                 </button>
                             </div>
 
-                            {/* Lista de Notas */}
+                            {/* Notes List */}
                             <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin">
+                                {knowledgeBase.length === 0 && (
+                                    <div className="text-center py-8">
+                                        <BookOpen className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                        <p className="text-xs text-gray-400">Sin conocimiento adicional todavía.</p>
+                                        <p className="text-[10px] text-gray-300 mt-1">Agrega notas para que la IA las use como contexto.</p>
+                                    </div>
+                                )}
                                 {knowledgeBase.map((note) => (
                                     <div key={note.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm group">
                                         <div className="flex justify-between gap-3">
@@ -329,78 +341,31 @@ export const StatsCopilot: React.FC = () => {
                             </div>
                         </div>
                     ) : (
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide bg-gray-50/50">
+                        <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-hide bg-gray-50/50">
                             {messages.map((msg) => (
                                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[85%] space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                        <div className={`p-4 rounded-3xl text-sm leading-relaxed shadow-sm ${msg.role === 'user'
-                                            ? 'bg-pirateRed text-white rounded-tr-none font-medium'
-                                            : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'}`}
+                                    <div className={`max-w-[88%] space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                        <div className={`p-4 rounded-3xl shadow-sm ${msg.role === 'user'
+                                            ? 'bg-pirateRed text-white rounded-tr-none font-medium text-sm'
+                                            : 'bg-white text-gray-700 rounded-tl-none border border-gray-100'}`}
                                         >
-                                            {msg.content}
+                                            {msg.role === 'assistant'
+                                                ? renderMarkdown(msg.content)
+                                                : msg.content
+                                            }
                                         </div>
-
-                                        {/* Visualización de Datos (si hay) */}
-                                        {msg.data && (
-                                            <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-lg mt-2">
-                                                <div className="p-3 bg-gray-50 flex items-center justify-between border-b border-gray-100">
-                                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Resultado</span>
-                                                    <Activity className="w-3 h-3 text-pirateRed" />
-                                                </div>
-                                                {msg.data.length > 0 ? (
-                                                    <div className="max-h-[200px] overflow-auto">
-                                                        <table className="w-full text-[10px] border-collapse">
-                                                            <thead className="sticky top-0 bg-gray-50">
-                                                                <tr>
-                                                                    {Object.keys(msg.data[0]).map(key => (
-                                                                        <th key={key} className="p-2 text-left text-gray-400 font-bold border-b border-gray-100 capitalize">{key.replace('_', ' ')}</th>
-                                                                    ))}
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {msg.data.map((row, i) => (
-                                                                    <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                                                                        {Object.values(row).map((val: any, j) => (
-                                                                            <td key={j} className="p-2 text-gray-600">
-                                                                                {typeof val === 'number' && val > 100 ? formatCurrency(val) : String(val)}
-                                                                            </td>
-                                                                        ))}
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                ) : (
-                                                    <div className="p-8 text-center">
-                                                        <p className="text-xs text-gray-400 italic">No se encontraron registros que coincidan con estos criterios. 🏴‍☠️</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {/* SQL Toggle (Debug/Info) */}
-                                        {msg.sql && (
-                                            <details className="mt-1 group">
-                                                <summary className="text-[9px] text-gray-400 font-bold uppercase tracking-widest cursor-pointer hover:text-pirateRed transition-colors flex items-center gap-1 list-none">
-                                                    <Terminal className="w-2.5 h-2.5" /> Ver Consulta Técnica
-                                                </summary>
-                                                <div className="mt-2 p-3 bg-gray-900 rounded-xl text-[10px] text-green-400 font-mono overflow-x-auto border border-white/5">
-                                                    {msg.sql}
-                                                </div>
-                                            </details>
-                                        )}
                                     </div>
                                 </div>
                             ))}
                             {isLoading && (
                                 <div className="flex justify-start">
-                                    <div className="bg-white p-4 rounded-3xl rounded-tl-none border border-gray-100 shadow-sm flex items-center gap-2">
+                                    <div className="bg-white p-4 rounded-3xl rounded-tl-none border border-gray-100 shadow-sm flex items-center gap-3">
                                         <div className="flex gap-1">
-                                            <div className="w-1.5 h-1.5 bg-pirateRed rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                            <div className="w-1.5 h-1.5 bg-pirateRed rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                            <div className="w-1.5 h-1.5 bg-pirateRed rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                            <div className="w-2 h-2 bg-pirateRed rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                            <div className="w-2 h-2 bg-pirateRed rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                            <div className="w-2 h-2 bg-pirateRed rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                                         </div>
-                                        <span className="text-xs text-gray-400 font-medium italic">Navegando datos...</span>
+                                        <span className="text-xs text-gray-400 font-medium italic">Analizando...</span>
                                     </div>
                                 </div>
                             )}
@@ -410,28 +375,31 @@ export const StatsCopilot: React.FC = () => {
                 </div>
 
                 {/* Input */}
-                <div className="p-6 bg-white border-t border-gray-100">
-                    <div className="relative group">
-                        <input
-                            type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder="Escribe tu pregunta aquí..."
-                            className="w-full pl-5 pr-14 py-4 bg-gray-50 border-2 border-transparent rounded-2xl text-sm focus:bg-white focus:border-pirateRed/20 focus:ring-4 focus:ring-pirateRed/5 transition-all outline-none"
-                        />
-                        <button
-                            onClick={handleSend}
-                            disabled={isLoading || !input.trim()}
-                            className="absolute right-2 top-2 w-10 h-10 rounded-xl bg-pirateRed text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 disabled:grayscale disabled:opacity-50"
-                        >
-                            <Send className="w-5 h-5" />
-                        </button>
+                {!isTrainingMode && (
+                    <div className="p-5 bg-white border-t border-gray-100">
+                        <div className="relative group">
+                            <input
+                                type="text"
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                                placeholder="Pregunta lo que quieras..."
+                                className="w-full pl-5 pr-14 py-4 bg-gray-50 border-2 border-transparent rounded-2xl text-sm focus:bg-white focus:border-pirateRed/20 focus:ring-4 focus:ring-pirateRed/5 transition-all outline-none"
+                                disabled={isLoading}
+                            />
+                            <button
+                                onClick={handleSend}
+                                disabled={isLoading || !input.trim()}
+                                className="absolute right-2 top-2 w-10 h-10 rounded-xl bg-pirateRed text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95 disabled:grayscale disabled:opacity-50"
+                            >
+                                <Send className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <p className="text-[9px] text-center text-gray-300 mt-3 font-bold uppercase tracking-widest">
+                            Gemini 2.5 · Conversación con memoria
+                        </p>
                     </div>
-                    <p className="text-[9px] text-center text-gray-400 mt-3 font-bold uppercase tracking-widest italic opacity-50">
-                        Inteligencia Artificial Experimental para Piratas
-                    </p>
-                </div>
+                )}
             </div>
         </>
     );
